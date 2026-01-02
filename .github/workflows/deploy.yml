@@ -1,0 +1,42 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: root
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            # Navigate to project
+            cd /root/nativehub-3
+
+            # Pull latest changes
+            git pull origin main
+
+            # Build and deploy with zero downtime
+            docker compose -f docker/docker-compose.yml build
+            docker compose -f docker/docker-compose.yml up -d
+
+            # Cleanup old images
+            docker image prune -f
+
+            # Health check
+            sleep 10
+            curl -f http://localhost:3001/health || exit 1
+
+            echo "Deploy successful!"
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "Deploy failed! Check the logs."

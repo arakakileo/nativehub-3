@@ -1,0 +1,29 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { api } from '../lib/api'
+
+export function useCampaigns(sourceAccountId?: string) {
+  return useQuery({
+    queryKey: ['campaigns', { sourceAccountId }],
+    queryFn: () => api.getCampaigns(sourceAccountId),
+  })
+}
+
+export function useCampaign(id: string) {
+  return useQuery({
+    queryKey: ['campaigns', id],
+    queryFn: () => api.getCampaign(id),
+    enabled: !!id,
+  })
+}
+
+export function useUpdateCampaign() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { status?: string; bidAmount?: number } }) =>
+      api.updateCampaign(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] })
+    },
+  })
+}
