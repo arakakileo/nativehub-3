@@ -131,12 +131,16 @@ export function applyTargetCpaToCondition(
     if ('and' in cond || 'or' in cond) {
       const nested = 'and' in cond ? cond.and : cond.or
       nested?.forEach(processCondition)
-    } else if (cond.metric === 'cpa') {
-      // Replace CPA threshold with targetCpa * multiplier
-      cond.value = targetCpa * (template.defaults.cpaMultiplier || 1)
-    } else if (cond.metric === 'spend' && template.id === 'pause_bleeding') {
-      // For pause_bleeding, spend threshold is based on CPA
-      cond.value = targetCpa * (template.defaults.cpaMultiplier || 3)
+    } else {
+      // TypeScript now knows this is RuleCondition
+      const ruleCond = cond as RuleCondition
+      if (ruleCond.metric === 'cpa') {
+        // Replace CPA threshold with targetCpa * multiplier
+        ruleCond.value = targetCpa * (template.defaults.cpaMultiplier || 1)
+      } else if (ruleCond.metric === 'spend' && template.id === 'pause_bleeding') {
+        // For pause_bleeding, spend threshold is based on CPA
+        ruleCond.value = targetCpa * (template.defaults.cpaMultiplier || 3)
+      }
     }
   }
 

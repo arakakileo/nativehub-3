@@ -2,7 +2,7 @@
 
 **Base URL**: `http://localhost:3001/api/v1`
 **Version**: 3.0.0
-**Status**: Phase 06 - Traffic Source Adapters Integrated
+**Status**: Phase 02 - Campaign Sync Service Integrated
 
 ---
 

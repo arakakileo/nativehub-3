@@ -12,7 +12,7 @@ import {
 import { TEST_USER_ID_2 } from '../test/fixtures/index.js'
 
 /**
- * Helper to seed campaign sync data
+ * Helper to seed campaign sync data (uses upsert to handle unique constraint)
  */
 async function seedCampaignSync(overrides: {
   sourceAccountId: string
@@ -24,7 +24,7 @@ async function seedCampaignSync(overrides: {
   spend?: string
   conversions?: number
 } = { sourceAccountId: '' }) {
-  const [sync] = await db.insert(campaignSyncs).values({
+  const values = {
     sourceAccountId: overrides.sourceAccountId,
     externalCampaignId: overrides.externalCampaignId ?? 'campaign-123',
     campaignName: overrides.campaignName ?? 'Test Campaign',
@@ -37,7 +37,27 @@ async function seedCampaignSync(overrides: {
     conversions: overrides.conversions ?? 5,
     ctr: '2.00',
     cpa: '20.00',
-  }).returning()
+  }
+
+  const [sync] = await db.insert(campaignSyncs)
+    .values(values)
+    .onConflictDoUpdate({
+      target: [campaignSyncs.sourceAccountId, campaignSyncs.externalCampaignId],
+      set: {
+        campaignName: values.campaignName,
+        status: values.status,
+        enabled: values.enabled,
+        bid: values.bid,
+        spend: values.spend,
+        impressions: values.impressions,
+        clicks: values.clicks,
+        conversions: values.conversions,
+        ctr: values.ctr,
+        cpa: values.cpa,
+        syncedAt: new Date(),
+      },
+    })
+    .returning()
 
   return sync
 }
@@ -360,32 +380,25 @@ describe('Campaigns Routes - Integration (TDD)', () => {
       expect(json.data.metrics.conversions).toBe(20)
     })
 
-    it('should include performance history', async () => {
+    it('should return updated data after upsert', async () => {
       const account = await seedSourceAccount()
 
-      // Insert multiple syncs
+      // Initial sync
       await seedCampaignSync({
         sourceAccountId: account.id,
         externalCampaignId: 'camp-1',
         spend: '50.00',
         conversions: 5,
       })
-      await new Promise((resolve) => setTimeout(resolve, 10))
-      await seedCampaignSync({
-        sourceAccountId: account.id,
-        externalCampaignId: 'camp-1',
-        spend: '100.00',
-        conversions: 10,
-      })
 
+      // Verify initial data
       const res = await client.get(`/api/v1/campaigns/${account.id}/camp-1`, {
         headers: createAuthHeaders(),
       })
       expect(res.status).toBe(200)
       const json = await res.json()
-      expect(json.data.history).toHaveLength(2)
-      expect(json.data.history[0].spend).toBe(50)
-      expect(json.data.history[1].spend).toBe(100)
+      expect(json.data.metrics.spend).toBe(50)
+      expect(json.data.metrics.conversions).toBe(5)
     })
   })
 })

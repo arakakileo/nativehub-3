@@ -49,7 +49,8 @@ beforeAll(async () => {
       conversions INTEGER NOT NULL DEFAULT 0,
       ctr NUMERIC NOT NULL DEFAULT 0,
       cpa NUMERIC NOT NULL DEFAULT 0,
-      synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(source_account_id, external_campaign_id)
     );
 
     CREATE TABLE IF NOT EXISTS widget_blacklist (

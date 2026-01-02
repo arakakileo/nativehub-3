@@ -93,6 +93,7 @@ export const campaignSyncs = pgTable('campaign_syncs', {
 }, (table) => ({
   accountDateIdx: index('idx_campaign_syncs_account_date').on(table.sourceAccountId, table.syncedAt),
   campaignIdx: index('idx_campaign_syncs_campaign').on(table.externalCampaignId, table.syncedAt),
+  uniqueAccountCampaign: unique().on(table.sourceAccountId, table.externalCampaignId),
 }))
 
 // Widget Blacklist

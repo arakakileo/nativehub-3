@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { validateBody } from '../middleware/validate.js'
 import { sourceAccountService } from '../services/source-account.service.js'
+import { campaignSyncService } from '../services/campaign-sync.js'
 import { logger } from '../lib/logger.js'
 
 // Validation schemas
@@ -111,4 +112,30 @@ export const sourceAccountRoutes = new Hono()
 
     await sourceAccountService.delete(userId, id)
     return c.json({ success: true })
+  })
+
+  // Trigger manual campaign sync for a source account
+  .post('/:id/sync', async (c) => {
+    const userId = c.get('userId')
+    const id = c.req.param('id')
+
+    // Verify account belongs to user
+    const account = await sourceAccountService.get(userId, id)
+    if (!account) {
+      return c.json({ error: 'Source account not found' }, 404)
+    }
+
+    if (account.status !== 'active' && account.status !== 'connected') {
+      return c.json({ error: 'Account not active' }, 400)
+    }
+
+    try {
+      logger.info({ accountId: id }, 'Manual sync triggered')
+      const campaignCount = await campaignSyncService.syncAccount(id)
+      return c.json({ success: true, campaignCount })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      logger.error({ accountId: id, error: message }, 'Manual sync failed')
+      return c.json({ success: false, error: message }, 500)
+    }
   })

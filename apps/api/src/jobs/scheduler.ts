@@ -1,12 +1,13 @@
-import cron from 'node-cron'
+import cron, { type ScheduledTask } from 'node-cron'
 import { optimizerService } from '../services/optimizer/index.js'
+import { campaignSyncService } from '../services/campaign-sync.js'
 import { logger } from '../lib/logger.js'
 
 /**
  * Job Scheduler - Manages background jobs
  */
 class Scheduler {
-  private jobs: Map<string, cron.ScheduledTask> = new Map()
+  private jobs: Map<string, ScheduledTask> = new Map()
 
   /**
    * Initialize all scheduled jobs
@@ -25,11 +26,16 @@ class Scheduler {
       }
     })
 
-    // Sync campaigns every 30 minutes (optional - can be enabled later)
-    // this.scheduleJob('sync', '*/30 * * * *', async () => {
-    //   logger.info('Running campaign sync')
-    //   // ... sync implementation
-    // })
+    // Sync campaigns every 30 minutes
+    this.scheduleJob('sync', '*/30 * * * *', async () => {
+      logger.info('Running campaign sync')
+      try {
+        const result = await campaignSyncService.syncAll()
+        logger.info(result, 'Campaign sync complete')
+      } catch (error) {
+        logger.error({ error }, 'Campaign sync failed')
+      }
+    })
 
     logger.info({ jobCount: this.jobs.size }, 'Job scheduler initialized')
   }
@@ -95,6 +101,9 @@ class Scheduler {
     switch (name) {
       case 'optimizer':
         await optimizerService.optimizeAll()
+        break
+      case 'sync':
+        await campaignSyncService.syncAll()
         break
       default:
         throw new Error(`Unknown job: ${name}`)
