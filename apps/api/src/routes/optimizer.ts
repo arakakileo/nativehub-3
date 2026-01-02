@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { eq, and } from 'drizzle-orm'
-import { authMiddleware } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
 import { db } from '../lib/db.js'
 import { sourceAccounts, optimizerCampaigns, optimizerRules, optimizerActions } from '../db/schema.js'
@@ -20,18 +19,16 @@ const UpdateOptimizerCampaignSchema = z.object({
   bidStrategy: z.enum(['target_cpa', 'maximize_conversions', 'manual']).optional(),
 })
 
+// Note: sessionMiddleware is applied globally in index.ts for all /api/v1/* routes
 export const optimizerRoutes = new Hono()
-  // All routes require authentication
-  .use('*', authMiddleware)
-
   // List optimizer campaigns for user
   .get('/campaigns', async (c) => {
-    const user = c.get('user')
+    const userId = c.get('userId')
 
     // Get user's source accounts
     const accounts = await db.select({ id: sourceAccounts.id })
       .from(sourceAccounts)
-      .where(eq(sourceAccounts.userId, user.id))
+      .where(eq(sourceAccounts.userId, userId))
 
     if (accounts.length === 0) {
       return c.json({ data: [] })
@@ -60,7 +57,7 @@ export const optimizerRoutes = new Hono()
 
   // Get single optimizer campaign with rules
   .get('/campaigns/:id', async (c) => {
-    const user = c.get('user')
+    const userId = c.get('userId')
     const id = c.req.param('id')
 
     const campaigns = await db.select().from(optimizerCampaigns)
@@ -77,7 +74,7 @@ export const optimizerRoutes = new Hono()
       .from(sourceAccounts)
       .where(and(
         eq(sourceAccounts.id, campaign.sourceAccountId),
-        eq(sourceAccounts.userId, user.id)
+        eq(sourceAccounts.userId, userId)
       ))
 
     if (accounts.length === 0) {
@@ -116,7 +113,7 @@ export const optimizerRoutes = new Hono()
 
   // Create optimizer campaign
   .post('/campaigns', validateBody(CreateOptimizerCampaignSchema), async (c) => {
-    const user = c.get('user')
+    const userId = c.get('userId')
     const body = c.get('validatedBody') as z.infer<typeof CreateOptimizerCampaignSchema>
 
     // Verify user owns the source account
@@ -124,7 +121,7 @@ export const optimizerRoutes = new Hono()
       .from(sourceAccounts)
       .where(and(
         eq(sourceAccounts.id, body.sourceAccountId),
-        eq(sourceAccounts.userId, user.id)
+        eq(sourceAccounts.userId, userId)
       ))
 
     if (accounts.length === 0) {
@@ -163,7 +160,7 @@ export const optimizerRoutes = new Hono()
 
   // Update optimizer campaign
   .patch('/campaigns/:id', validateBody(UpdateOptimizerCampaignSchema), async (c) => {
-    const user = c.get('user')
+    const userId = c.get('userId')
     const id = c.req.param('id')
     const body = c.get('validatedBody') as z.infer<typeof UpdateOptimizerCampaignSchema>
 
@@ -181,7 +178,7 @@ export const optimizerRoutes = new Hono()
       .from(sourceAccounts)
       .where(and(
         eq(sourceAccounts.id, campaign.sourceAccountId),
-        eq(sourceAccounts.userId, user.id)
+        eq(sourceAccounts.userId, userId)
       ))
 
     if (accounts.length === 0) {
@@ -209,7 +206,7 @@ export const optimizerRoutes = new Hono()
 
   // Get action history
   .get('/campaigns/:id/actions', async (c) => {
-    const user = c.get('user')
+    const userId = c.get('userId')
     const id = c.req.param('id')
     const limit = parseInt(c.req.query('limit') || '50')
 
@@ -227,7 +224,7 @@ export const optimizerRoutes = new Hono()
       .from(sourceAccounts)
       .where(and(
         eq(sourceAccounts.id, campaign.sourceAccountId),
-        eq(sourceAccounts.userId, user.id)
+        eq(sourceAccounts.userId, userId)
       ))
 
     if (accounts.length === 0) {

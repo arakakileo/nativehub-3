@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { eq, and } from 'drizzle-orm'
-import { authMiddleware } from '../middleware/auth.js'
 import { validateBody } from '../middleware/validate.js'
 import { db } from '../lib/db.js'
 import { sourceAccounts, widgetBlacklist } from '../db/schema.js'
@@ -15,20 +14,18 @@ const BlacklistWidgetSchema = z.object({
   reason: z.string().optional(),
 })
 
+// Note: sessionMiddleware is applied globally in index.ts for all /api/v1/* routes
 export const widgetRoutes = new Hono()
-  // All routes require authentication
-  .use('*', authMiddleware)
-
   // List blacklisted widgets
   .get('/blacklist', async (c) => {
-    const user = c.get('user')
+    const userId = c.get('userId')
     const sourceAccountId = c.req.query('sourceAccountId')
     const externalCampaignId = c.req.query('externalCampaignId')
 
     // Get user's source accounts
     const accounts = await db.select({ id: sourceAccounts.id })
       .from(sourceAccounts)
-      .where(eq(sourceAccounts.userId, user.id))
+      .where(eq(sourceAccounts.userId, userId))
 
     if (accounts.length === 0) {
       return c.json({ data: [] })
@@ -68,7 +65,7 @@ export const widgetRoutes = new Hono()
 
   // Add widget to blacklist
   .post('/blacklist', validateBody(BlacklistWidgetSchema), async (c) => {
-    const user = c.get('user')
+    const userId = c.get('userId')
     const body = c.get('validatedBody') as z.infer<typeof BlacklistWidgetSchema>
 
     // Verify user owns the source account
@@ -76,7 +73,7 @@ export const widgetRoutes = new Hono()
       .from(sourceAccounts)
       .where(and(
         eq(sourceAccounts.id, body.sourceAccountId),
-        eq(sourceAccounts.userId, user.id)
+        eq(sourceAccounts.userId, userId)
       ))
 
     if (accounts.length === 0) {
@@ -118,7 +115,7 @@ export const widgetRoutes = new Hono()
 
   // Remove widget from blacklist
   .delete('/blacklist/:id', async (c) => {
-    const user = c.get('user')
+    const userId = c.get('userId')
     const id = c.req.param('id')
 
     // Get the blacklist entry
@@ -136,7 +133,7 @@ export const widgetRoutes = new Hono()
       .from(sourceAccounts)
       .where(and(
         eq(sourceAccounts.id, entry.sourceAccountId),
-        eq(sourceAccounts.userId, user.id)
+        eq(sourceAccounts.userId, userId)
       ))
 
     if (accounts.length === 0) {

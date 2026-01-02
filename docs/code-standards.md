@@ -352,32 +352,93 @@ vi.mock('../../traffic-sources/index.js', () => ({
 ### Purpose
 
 Middleware intercepts requests to:
-- Validate authentication
+- Validate authentication (session-based)
 - Log requests
 - Handle errors
 - Transform payloads
-- Rate limit
+- Rate limit (tiered)
 
-### Structure
+### Session Middleware (Better Auth)
+
+All protected routes use session middleware to validate HTTP-only cookies:
 
 ```typescript
-import { Context, Next } from 'hono'
+import { createMiddleware } from "hono/factory"
+import { auth, type User } from "../auth.js"
 
-export async function authMiddleware(c: Context, next: Next) {
-  const token = c.req.header('Authorization')?.replace('Bearer ', '')
-
-  if (!token) {
-    return c.json({ error: 'Unauthorized' }, 401)
-  }
-
-  try {
-    const payload = verifyToken(token)
-    c.set('userId', payload.sub)
-    await next()
-  } catch {
-    return c.json({ error: 'Invalid token' }, 401)
+declare module "hono" {
+  interface ContextVariableMap {
+    user: User
+    userId: string
   }
 }
+
+/**
+ * Session middleware - validates session from cookies
+ * Returns 401 if no valid session found
+ */
+export const sessionMiddleware = createMiddleware(async (c, next) => {
+  const session = await auth.api.getSession({
+    headers: c.req.raw.headers,
+  })
+
+  if (!session?.user?.id) {
+    return c.json({ error: "Unauthorized" }, 401)
+  }
+
+  c.set("user", session.user)
+  c.set("userId", session.user.id)
+
+  await next()
+})
+```
+
+### Rate Limiting Middleware
+
+Tiered rate limiting for security and fair usage:
+
+```typescript
+export const authRateLimiter = createMiddleware(async (c, next) => {
+  // 10 requests per 15 minutes for auth endpoints (brute force protection)
+  const ip = extractIpAddress(c)
+  const { allowed, remaining, resetTime } = checkRateLimit(
+    ip,
+    "auth",
+    15 * 60 * 1000,  // 15-minute window
+    10                // max requests
+  )
+
+  c.header("X-RateLimit-Limit", "10")
+  c.header("X-RateLimit-Remaining", String(remaining))
+  c.header("X-RateLimit-Reset", String(Math.ceil(resetTime / 1000)))
+
+  if (!allowed) {
+    return c.json({ error: "Too many requests" }, 429)
+  }
+
+  await next()
+})
+
+export const apiRateLimiter = createMiddleware(async (c, next) => {
+  // 100 requests per 1 minute for API endpoints (fair usage)
+  const ip = extractIpAddress(c)
+  const { allowed, remaining, resetTime } = checkRateLimit(
+    ip,
+    "api",
+    60 * 1000,        // 1-minute window
+    100               // max requests
+  )
+
+  c.header("X-RateLimit-Limit", "100")
+  c.header("X-RateLimit-Remaining", String(remaining))
+  c.header("X-RateLimit-Reset", String(Math.ceil(resetTime / 1000)))
+
+  if (!allowed) {
+    return c.json({ error: "Too many requests" }, 429)
+  }
+
+  await next()
+})
 ```
 
 ### Application
@@ -385,13 +446,36 @@ export async function authMiddleware(c: Context, next: Next) {
 ```typescript
 const app = new Hono()
 
-// Apply globally
-app.use(authMiddleware)
-app.use(errorHandler)
+// Health check (no auth required)
+app.get("/health", (c) => c.json({ status: "ok" }))
 
-// Or to specific routes
-app.post('/accounts', authMiddleware, createAccount)
+// Auth routes (with rate limiting for brute force protection)
+app.use("/api/auth/*", authRateLimiter)
+app.route("/api/auth", authRoutes)
+
+// Protected API routes
+app.use("/api/v1/*", sessionMiddleware)
+app.use("/api/v1/*", apiRateLimiter)
+app.route("/api/v1/campaigns", campaignRoutes)
+app.route("/api/v1/source-accounts", sourceAccountRoutes)
 ```
+
+### Security Best Practices
+
+**DO**:
+- Always validate session on protected routes
+- Return 401 for invalid/missing sessions
+- Set rate limit headers in responses
+- Use tiered rate limits (auth stricter than API)
+- Extract IP from proxy headers (`x-forwarded-for`, `x-real-ip`)
+- Log failed authentication attempts
+
+**DON'T**:
+- Store session tokens in localStorage (use HTTP-only cookies)
+- Expose detailed error messages (generic "Unauthorized")
+- Skip rate limiting on auth endpoints
+- Trust client-provided user ID (use session.user.id)
+- Log sensitive data (passwords, tokens)
 
 ## Environment Variables
 
@@ -401,9 +485,15 @@ app.post('/accounts', authMiddleware, createAccount)
 # Database
 DATABASE_URL=postgresql://user:pass@localhost:5432/nativehub
 
-# Encryption
+# Better Auth (Session-based authentication)
+BETTER_AUTH_SECRET=<generate-with-openssl-rand-hex-32>
+BETTER_AUTH_URL=http://localhost:3001
+
+# Encryption (Credential storage)
 ENCRYPTION_KEY=0123456789abcdef...  # 64-char hex string
-JWT_SECRET=your-jwt-secret-key
+
+# Frontend (CORS trusted origin)
+FRONTEND_URL=http://localhost:5173
 
 # External APIs
 REVCONTENT_CLIENT_ID=...
@@ -413,8 +503,24 @@ TABOOLA_CLIENT_ID=...
 
 # Application
 NODE_ENV=production
-PORT=3000
+PORT=3001
 LOG_LEVEL=info
+```
+
+### Frontend (apps/web/.env)
+
+```env
+VITE_API_URL=http://localhost:3001
+```
+
+### Generate BETTER_AUTH_SECRET
+
+```bash
+# Development
+BETTER_AUTH_SECRET=development-key-for-testing
+
+# Production (secure random 32 bytes)
+openssl rand -hex 32
 ```
 
 ## Encryption

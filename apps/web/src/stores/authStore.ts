@@ -1,88 +1,130 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
-import { api } from '../lib/api'
+import { authClient } from '../lib/auth-client'
 
 interface User {
   id: string
   email: string
+  name?: string | null
+  image?: string | null
 }
 
 interface AuthState {
   user: User | null
-  token: string | null
   isAuthenticated: boolean
   isLoading: boolean
   error: string | null
 
   login: (email: string, password: string) => Promise<void>
-  logout: () => void
-  setToken: (token: string) => void
+  signup: (email: string, password: string, name?: string) => Promise<void>
+  logout: () => Promise<void>
+  checkSession: () => Promise<void>
   clearError: () => void
 }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set) => ({
-      user: null,
-      token: null,
-      isAuthenticated: false,
-      isLoading: false,
-      error: null,
+export const useAuthStore = create<AuthState>()((set) => ({
+  user: null,
+  isAuthenticated: false,
+  isLoading: true, // Start loading to check session
+  error: null,
 
-      login: async (email, _password) => {
-        set({ isLoading: true, error: null })
+  login: async (email, password) => {
+    set({ isLoading: true, error: null })
 
-        try {
-          // TODO: Implement Supabase Auth integration
-          // For now, mock login
-          const mockToken = 'mock-token-' + Date.now()
-          const mockUser = { id: '1', email }
+    try {
+      const result = await authClient.signIn.email({
+        email,
+        password,
+      })
 
-          api.setToken(mockToken)
+      if (result.error) {
+        throw new Error(result.error.message || 'Login failed')
+      }
 
-          set({
-            user: mockUser,
-            token: mockToken,
-            isAuthenticated: true,
-            isLoading: false,
-          })
-        } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : 'Login failed',
-            isLoading: false,
-          })
-          throw error
-        }
-      },
+      set({
+        user: result.data?.user as User,
+        isAuthenticated: true,
+        isLoading: false,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Login failed'
+      set({
+        error: message,
+        isLoading: false,
+      })
+      throw error
+    }
+  },
 
-      logout: () => {
-        api.setToken(null)
+  signup: async (email, password, name) => {
+    set({ isLoading: true, error: null })
+
+    try {
+      const result = await authClient.signUp.email({
+        email,
+        password,
+        name: name || email.split('@')[0],
+      })
+
+      if (result.error) {
+        throw new Error(result.error.message || 'Signup failed')
+      }
+
+      set({
+        user: result.data?.user as User,
+        isAuthenticated: true,
+        isLoading: false,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Signup failed'
+      set({
+        error: message,
+        isLoading: false,
+      })
+      throw error
+    }
+  },
+
+  logout: async () => {
+    set({ isLoading: true })
+
+    try {
+      await authClient.signOut()
+    } finally {
+      set({
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+      })
+    }
+  },
+
+  checkSession: async () => {
+    set({ isLoading: true })
+
+    try {
+      const session = await authClient.getSession()
+
+      if (session.data?.user) {
+        set({
+          user: session.data.user as User,
+          isAuthenticated: true,
+          isLoading: false,
+        })
+      } else {
         set({
           user: null,
-          token: null,
           isAuthenticated: false,
+          isLoading: false,
         })
-      },
-
-      setToken: (token) => {
-        api.setToken(token)
-        set({ token, isAuthenticated: true })
-      },
-
-      clearError: () => set({ error: null }),
-    }),
-    {
-      name: 'nativehub-auth',
-      partialize: (state) => ({
-        token: state.token,
-        user: state.user,
-        isAuthenticated: state.isAuthenticated,
-      }),
-      onRehydrateStorage: () => (state) => {
-        if (state?.token) {
-          api.setToken(state.token)
-        }
-      },
+      }
+    } catch {
+      set({
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+      })
     }
-  )
-)
+  },
+
+  clearError: () => set({ error: null }),
+}))

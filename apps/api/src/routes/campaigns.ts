@@ -1,22 +1,19 @@
 import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
-import { authMiddleware } from '../middleware/auth.js'
 import { db } from '../lib/db.js'
 import { sourceAccounts, campaignSyncs } from '../db/schema.js'
 
+// Note: sessionMiddleware is applied globally in index.ts for all /api/v1/* routes
 export const campaignRoutes = new Hono()
-  // All routes require authentication
-  .use('*', authMiddleware)
-
   // List all campaigns
   .get('/', async (c) => {
-    const user = c.get('user')
+    const userId = c.get('userId')
     const sourceAccountId = c.req.query('sourceAccountId')
 
     // Get user's source accounts
     const accounts = await db.select({ id: sourceAccounts.id })
       .from(sourceAccounts)
-      .where(eq(sourceAccounts.userId, user.id))
+      .where(eq(sourceAccounts.userId, userId))
 
     if (accounts.length === 0) {
       return c.json({ data: [] })
@@ -70,14 +67,14 @@ export const campaignRoutes = new Hono()
 
   // Get single campaign with history
   .get('/:sourceAccountId/:externalCampaignId', async (c) => {
-    const user = c.get('user')
+    const userId = c.get('userId')
     const sourceAccountId = c.req.param('sourceAccountId')
     const externalCampaignId = c.req.param('externalCampaignId')
 
     // Verify user owns the source account
     const accounts = await db.select({ id: sourceAccounts.id })
       .from(sourceAccounts)
-      .where(eq(sourceAccounts.userId, user.id))
+      .where(eq(sourceAccounts.userId, userId))
 
     const accountIds = accounts.map((a) => a.id)
     if (!accountIds.includes(sourceAccountId)) {

@@ -30,46 +30,83 @@ User Interaction → React Component → Custom Hook → API Call → State Upda
 
 ### 2. API Gateway & Middleware Layer
 
-**Technology**: Hono middleware stack
+**Technology**: Hono middleware stack + Better Auth
 
 **Responsibilities**:
-- Authentication (JWT validation)
+- Session-based authentication (HTTP-only cookies)
+- Better Auth framework integration
 - Request/response transformation
 - Error handling and logging
-- Rate limiting
+- Rate limiting (tiered by endpoint type)
 - CORS handling
 - Request ID tracking for tracing
 
 **Key Middleware**:
 
 ```typescript
-// auth.middleware.ts - JWT validation and user context injection
-async function authMiddleware(c: Context, next: Next) {
-  const token = c.req.header('Authorization')?.replace('Bearer ', '')
-  if (!token) return c.json({ error: 'Unauthorized' }, 401)
+// session.middleware.ts - Session validation
+export const sessionMiddleware = createMiddleware(async (c, next) => {
+  const session = await auth.api.getSession({
+    headers: c.req.raw.headers,
+  })
 
-  try {
-    const payload = verifyToken(token)
-    c.set('userId', payload.sub)
-    await next()
-  } catch {
-    return c.json({ error: 'Invalid token' }, 401)
+  if (!session?.user?.id) {
+    return c.json({ error: "Unauthorized" }, 401)
   }
-}
 
-// error-handler.middleware.ts - Global error handling
-async function errorHandler(c: Context, next: Next) {
-  try {
-    await next()
-  } catch (err) {
-    logger.error({ error: err }, 'Request failed')
-    return c.json({
-      error: err.message || 'Internal server error',
-      code: err.code || 'INTERNAL_ERROR',
-    }, err.status || 500)
+  c.set("user", session.user)
+  c.set("userId", session.user.id)
+
+  await next()
+})
+
+// rate-limit.middleware.ts - Tiered rate limiting
+export const authRateLimiter = createMiddleware(async (c, next) => {
+  const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
+  const { allowed, remaining, resetTime } = checkRateLimit(
+    ip,
+    15 * 60 * 1000,  // 15-minute window
+    10                // 10 requests max
+  )
+
+  c.header("X-RateLimit-Limit", "10")
+  c.header("X-RateLimit-Remaining", String(remaining))
+  c.header("X-RateLimit-Reset", String(Math.ceil(resetTime / 1000)))
+
+  if (!allowed) {
+    return c.json({ error: "Too many requests" }, 429)
   }
-}
+
+  await next()
+})
+
+export const apiRateLimiter = createMiddleware(async (c, next) => {
+  const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
+  const { allowed, remaining, resetTime } = checkRateLimit(
+    ip,
+    60 * 1000,        // 1-minute window
+    100               // 100 requests max
+  )
+
+  c.header("X-RateLimit-Limit", "100")
+  c.header("X-RateLimit-Remaining", String(remaining))
+  c.header("X-RateLimit-Reset", String(Math.ceil(resetTime / 1000)))
+
+  if (!allowed) {
+    return c.json({ error: "Too many requests" }, 429)
+  }
+
+  await next()
+})
 ```
+
+**Authentication Flow**:
+1. User authenticates via POST /api/auth/sign-in/email or POST /api/auth/sign-up/email
+2. Better Auth validates credentials and creates session
+3. Session token stored in HTTP-only cookie with secure flag (production only)
+4. Subsequent requests automatically include session cookie
+5. sessionMiddleware validates session from cookie headers
+6. User context injected into request for downstream handlers
 
 ### 3. Route/Controller Layer
 

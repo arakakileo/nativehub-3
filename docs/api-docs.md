@@ -20,35 +20,138 @@
 
 ## Authentication
 
-All API endpoints (except `/health`) require JWT authentication.
+All API endpoints (except `/health` and `/api/auth/*`) require a valid session via HTTP-only cookies.
 
-### Headers
+### Session Management
+
+NativeHub 3.0 uses **Better Auth** framework for session-based authentication with HTTP-only cookies.
+
+**Key Features**:
+- Session tokens stored in secure HTTP-only cookies
+- Session expiration: 7 days
+- Session update frequency: 24 hours (auto-renewal on activity)
+- Cookie prefix: `nativehub_`
+- Secure cookies enforced in production
+- Cookie cache enabled (5-minute cache window)
+
+### Authentication Endpoints
 
 ```
-Authorization: Bearer <jwt-token>
-Content-Type: application/json
+POST /api/auth/sign-in/email       - Email/password login
+POST /api/auth/sign-up/email       - Email/password signup
+POST /api/auth/sign-out            - Sign out (invalidates session)
+GET  /api/auth/get-session         - Retrieve current session
+POST /api/auth/verify-email        - Verify email (if enabled)
 ```
 
-### JWT Token Format
+### Request/Response Examples
 
+**Sign In**
+
+```bash
+curl -X POST http://localhost:3001/api/auth/sign-in/email \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "securepassword"
+  }'
+```
+
+Response (201 Created):
 ```json
 {
-  "sub": "user-uuid",
-  "exp": 1704067200,
-  "iat": 1703980800
+  "user": {
+    "id": "user-uuid",
+    "email": "user@example.com",
+    "name": "User Name",
+    "image": null
+  },
+  "session": {
+    "id": "session-uuid",
+    "expiresAt": "2026-01-09T16:00:00Z"
+  }
 }
 ```
 
-**Token Expiration**: 24 hours
+**Sign Up**
+
+```bash
+curl -X POST http://localhost:3001/api/auth/sign-up/email \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "newuser@example.com",
+    "password": "securepassword",
+    "name": "New User"
+  }'
+```
+
+**Get Session**
+
+```bash
+curl -X GET http://localhost:3001/api/auth/get-session
+```
+
+Response (200 OK):
+```json
+{
+  "user": {
+    "id": "user-uuid",
+    "email": "user@example.com",
+    "name": "User Name",
+    "image": null
+  },
+  "session": {
+    "id": "session-uuid",
+    "expiresAt": "2026-01-09T16:00:00Z"
+  }
+}
+```
+
+**Sign Out**
+
+```bash
+curl -X POST http://localhost:3001/api/auth/sign-out
+```
+
+Response (200 OK):
+```json
+{
+  "success": true
+}
+```
 
 ### Authentication Flow
 
 ```
-1. User logs in with credentials
-2. Server returns JWT token
-3. Client includes token in Authorization header
-4. Server validates token and user context
-5. Request processed with user isolation
+1. User submits credentials to POST /api/auth/sign-in/email or /api/auth/sign-up/email
+2. Server validates credentials and creates session
+3. Session token stored in HTTP-only cookie (automatically included in requests)
+4. Client receives user data and can cache in local state
+5. Subsequent requests automatically include session cookie
+6. Server validates session via sessionMiddleware
+7. Session auto-renewed on each request (if older than updateAge)
+```
+
+### Protected Routes
+
+All `/api/v1/*` endpoints require valid session. Missing or invalid session returns **401 Unauthorized**.
+
+**Session Validation in Middleware**:
+```typescript
+export const sessionMiddleware = createMiddleware(async (c, next) => {
+  const session = await auth.api.getSession({
+    headers: c.req.raw.headers,
+  })
+
+  if (!session?.user?.id) {
+    return c.json({ error: "Unauthorized" }, 401)
+  }
+
+  c.set("user", session.user)
+  c.set("userId", session.user.id)
+
+  await next()
+})
 ```
 
 ---
@@ -680,23 +783,56 @@ Response (401 Unauthorized):
 
 ## Rate Limiting
 
-**Limits** (per IP address):
-- 100 requests per minute
+Rate limiting is enforced per IP address with different limits for authentication and API endpoints to prevent brute force attacks and ensure fair resource usage.
 
-**Response Headers**:
+### Rate Limit Tiers
+
+| Endpoint Category | Window | Max Requests | Purpose |
+|---|---|---|---|
+| **Authentication** (`/api/auth/*`) | 15 minutes | 10 | Brute force protection |
+| **API** (`/api/v1/*`) | 1 minute | 100 | General API usage |
+
+### Rate Limit Headers
+
+All responses include rate limit information:
 ```
 X-RateLimit-Limit: 100
 X-RateLimit-Remaining: 95
 X-RateLimit-Reset: 1704067260
 ```
 
-**Rate Limit Exceeded Response** (429):
+**Header Descriptions**:
+- `X-RateLimit-Limit`: Maximum requests allowed in the window
+- `X-RateLimit-Remaining`: Requests remaining in current window
+- `X-RateLimit-Reset`: Unix timestamp when limit resets
+
+### Rate Limit Exceeded Response
+
+**Status Code**: 429 Too Many Requests
+
 ```json
 {
   "error": "Too many requests",
-  "code": "RATE_LIMITED"
+  "message": "Rate limit exceeded",
+  "retryAfter": 45
 }
 ```
+
+For authentication endpoints:
+```json
+{
+  "error": "Too many requests",
+  "message": "Please try again later",
+  "retryAfter": 125
+}
+```
+
+### Implementation Details
+
+Rate limiting uses in-memory store with automatic cleanup. IP detection follows standard proxy headers:
+- `x-forwarded-for` (takes first value for chain)
+- `x-real-ip` (fallback)
+- Remote connection IP (final fallback)
 
 ---
 

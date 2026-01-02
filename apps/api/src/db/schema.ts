@@ -13,6 +13,10 @@ import {
   integer,
 } from 'drizzle-orm/pg-core'
 
+// Re-export auth schema
+export * from './auth-schema.js'
+import { users } from './auth-schema.js'
+
 // Custom bytea type for binary data (encrypted credentials)
 const bytea = customType<{ data: Buffer; notNull: true; default: false }>({
   dataType() {
@@ -35,7 +39,7 @@ const bytea = customType<{ data: Buffer; notNull: true; default: false }>({
 // Source Accounts - Store traffic source credentials
 export const sourceAccounts = pgTable('source_accounts', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id').notNull(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   sourceId: text('source_id').notNull(), // revcontent, taboola, outbrain, mgid
   name: text('name').notNull(),
 

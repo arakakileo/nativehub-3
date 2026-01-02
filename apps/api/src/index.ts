@@ -3,7 +3,11 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger as honoLogger } from 'hono/logger'
 import { logger } from './lib/logger.js'
+import { trustedOrigins } from './lib/config.js'
 import { errorHandler } from './middleware/error-handler.js'
+import { sessionMiddleware } from './middleware/session.js'
+import { authRateLimiter, apiRateLimiter } from './middleware/rate-limit.js'
+import { authRoutes } from './routes/auth.js'
 import { sourceAccountRoutes } from './routes/source-accounts.js'
 import { campaignRoutes } from './routes/campaigns.js'
 import { widgetRoutes } from './routes/widgets.js'
@@ -12,22 +16,44 @@ import { initJobs } from './jobs/index.js'
 
 const app = new Hono()
 
-// Global middleware
-app.use('*', cors({
-  origin: ['http://localhost:3000', 'http://localhost:5173'],
-  credentials: true,
-}))
+// Global middleware - logger and error handler
 app.use('*', honoLogger())
 app.onError(errorHandler)
 
-// Health check
+// CORS for auth routes (must be before auth handler)
+app.use('/api/auth/*', cors({
+  origin: trustedOrigins,
+  credentials: true,
+  allowHeaders: ['Content-Type', 'Authorization'],
+  allowMethods: ['POST', 'GET', 'OPTIONS'],
+}))
+
+// Rate limiting for auth routes (stricter)
+app.use('/api/auth/*', authRateLimiter)
+
+// Mount auth routes (public)
+app.route('/api/auth', authRoutes)
+
+// CORS for API v1 routes
+app.use('/api/v1/*', cors({
+  origin: trustedOrigins,
+  credentials: true,
+}))
+
+// Rate limiting for API routes (more permissive)
+app.use('/api/v1/*', apiRateLimiter)
+
+// Apply session middleware to all API v1 routes (protected)
+app.use('/api/v1/*', sessionMiddleware)
+
+// Health check (public)
 app.get('/health', (c) => c.json({
   status: 'ok',
   timestamp: new Date().toISOString(),
   version: '3.0.0'
 }))
 
-// API v1 routes
+// API v1 routes (all protected by sessionMiddleware)
 const apiV1 = new Hono()
   .route('/source-accounts', sourceAccountRoutes)
   .route('/campaigns', campaignRoutes)

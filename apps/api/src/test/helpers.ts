@@ -4,7 +4,18 @@ import { db } from './mocks/db.js'
 import { sourceAccounts } from '../db/schema.js'
 import { encryptCredentials } from '../lib/crypto.js'
 import { TEST_USER_ID, TEST_USER_ID_2 } from './fixtures/index.js'
-import type { AuthUser } from '../middleware/auth.js'
+import type { User } from '../auth.js'
+
+// Test user type matching Better Auth User
+export interface TestUser {
+  id: string
+  email: string
+  name: string
+  emailVerified: boolean
+  image: string | null
+  createdAt: Date
+  updatedAt: Date
+}
 
 /**
  * Create a test client for making HTTP requests to a Hono app
@@ -67,22 +78,40 @@ export function createTestClient(app: Hono) {
 }
 
 /**
- * Create test app with mocked auth middleware
- * Injects user into context without Supabase validation
+ * Create a default test user matching Better Auth User type
  */
-export function createTestApp(user: AuthUser = { id: TEST_USER_ID, email: 'test@example.com' }) {
+export function createTestUser(overrides: Partial<TestUser> = {}): User {
+  return {
+    id: TEST_USER_ID,
+    email: 'test@example.com',
+    name: 'Test User',
+    emailVerified: true,
+    image: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  } as User
+}
+
+/**
+ * Create test app with mocked session middleware
+ * Injects user into context without Better Auth session validation
+ */
+export function createTestApp(user: User = createTestUser()) {
   const app = new Hono()
 
   // Add CORS like production
   app.use('*', cors())
 
-  // Mock auth middleware - injects user without token validation
+  // Mock session middleware - injects user without session validation
+  // In tests, we use Bearer token as a simple marker for "authenticated"
   app.use('*', async (c, next) => {
     const authHeader = c.req.header('Authorization')
     if (!authHeader?.startsWith('Bearer ')) {
-      return c.json({ error: 'Missing authorization header' }, 401)
+      return c.json({ error: 'Unauthorized' }, 401)
     }
     c.set('user', user)
+    c.set('userId', user.id)
     await next()
   })
 
