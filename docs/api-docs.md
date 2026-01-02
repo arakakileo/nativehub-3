@@ -2,18 +2,19 @@
 
 **Base URL**: `http://localhost:3001/api/v1`
 **Version**: 3.0.0
-**Status**: Phase 05 - Fully Implemented
+**Status**: Phase 06 - Traffic Source Adapters Integrated
 
 ---
 
 ## Table of Contents
 
 1. [Authentication](#authentication)
-2. [Campaigns API](#campaigns-api)
-3. [Widgets API](#widgets-api)
-4. [Optimizer API](#optimizer-api)
-5. [Error Handling](#error-handling)
-6. [Rate Limiting](#rate-limiting)
+2. [Supported Traffic Sources](#supported-traffic-sources)
+3. [Campaigns API](#campaigns-api)
+4. [Widgets API](#widgets-api)
+5. [Optimizer API](#optimizer-api)
+6. [Error Handling](#error-handling)
+7. [Rate Limiting](#rate-limiting)
 
 ---
 
@@ -49,6 +50,63 @@ Content-Type: application/json
 4. Server validates token and user context
 5. Request processed with user isolation
 ```
+
+---
+
+## Supported Traffic Sources
+
+NativeHub 3.0 integrates with 4 major native advertising platforms. Each source has specific authentication requirements and capabilities.
+
+### Source Types & Authentication
+
+| Source | Auth Method | Token Duration | Rate Limit | Credentials |
+|--------|------------|---|---|---|
+| **Revcontent** | OAuth2 | 1 hour | 100 req/min | clientId, clientSecret |
+| **Taboola** | OAuth2 | 1 hour | 100 req/min | clientId, clientSecret, accountId |
+| **Outbrain** | Basic auth | 30 days | 30 req/sec | username, password, marketerId |
+| **MGID** | API key | Never | 100 req/min | apiKey, clientId |
+
+### Connecting a Traffic Source
+
+When connecting a source account via the Source Accounts API:
+
+```json
+{
+  "sourceId": "taboola",
+  "name": "Q1 Taboola Campaigns",
+  "credentials": {
+    "clientId": "your-client-id",
+    "clientSecret": "your-client-secret",
+    "accessToken": "your-account-id"
+  }
+}
+```
+
+**Credentials storage**: All credentials are encrypted with AES-256-GCM before storage.
+
+### Source Implementation Details
+
+**Revcontent**
+- Standard OAuth2 client credentials flow
+- Direct API key authentication
+- Straightforward campaign and widget management
+
+**Taboola**
+- OAuth2 with account ID passed as accessToken
+- Requires account ID for all API operations
+- Campaign status: RUNNING, PAUSED, FROZEN, TERMINATED
+
+**Outbrain**
+- Basic authentication (username/password) → token exchange
+- Tokens valid for 30 days (long-lived)
+- **Important**: Only 2 login requests allowed per hour
+- Very strict rate limiting (30 req/sec)
+
+**MGID**
+- Simple API key authentication (no token exchange)
+- No login rate limits
+- Most straightforward integration
+- API key never expires
 
 ---
 

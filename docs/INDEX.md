@@ -1,8 +1,8 @@
 # NativeHub 3.0 Documentation Index
 
 **Last Updated**: January 2, 2026
-**Current Phase**: Phase 05 - API Routes Implementation (Complete)
-**Next Phase**: Phase 06 - Frontend Development
+**Current Phase**: Phase 06 - Traffic Source Adapters (Complete)
+**Next Phase**: Phase 07 - Campaign Sync Service
 
 ---
 
@@ -124,7 +124,7 @@ Phase 03 - Backend Integration Tests:
 **Best For**: Understanding integration test suite and what they cover.
 
 ### [PHASE-05-SUMMARY.md](./PHASE-05-SUMMARY.md)
-Phase 05 - API Routes Implementation (CURRENT):
+Phase 05 - API Routes Implementation (Complete):
 - Overview of implementation
 - **Campaign Routes** (2 endpoints)
   - GET /campaigns - List campaigns
@@ -145,6 +145,51 @@ Phase 05 - API Routes Implementation (CURRENT):
 - Next steps for Phase 06
 
 **Best For**: Understanding API route implementation details.
+
+### [PHASE-06-SUMMARY.md](./PHASE-06-SUMMARY.md)
+Phase 06 - Traffic Source Adapters (CURRENT):
+- Overview of 4 traffic source implementations
+- **Taboola Adapter**
+  - OAuth2 authentication with account ID
+  - Campaign and widget management
+  - Rate limiting (100 req/min)
+- **Outbrain Adapter**
+  - Basic auth with 30-day tokens
+  - Strict rate limiting (30 req/sec, 2 logins/hour)
+  - Special token refresh strategy
+- **MGID Adapter**
+  - API key authentication (no token exchange)
+  - Simplest integration
+  - No login rate limits
+- **Shared Utilities**
+  - `extractMetrics()` DRY utility for all sources
+  - `makeRequest()` for HTTP calls
+  - `buildUrl()` for query parameters
+  - Rate limiting and retry logic
+- Authentication flows and token management
+- Metrics extraction and normalization
+- Error handling patterns
+- Testing strategy
+- Integration with system
+- Performance characteristics
+- DRY improvements
+
+**Best For**: Understanding traffic source adapters and implementation patterns.
+
+### [TRAFFIC-SOURCES-QUICK-REFERENCE.md](./TRAFFIC-SOURCES-QUICK-REFERENCE.md)
+Quick reference guide for traffic sources:
+- Source comparison matrix (auth, rate limits, endpoints)
+- Credential configuration examples
+- Common operations (authenticate, list campaigns, blacklist widgets)
+- Error handling patterns
+- Rate limiting information
+- Metrics extraction details
+- Token management
+- Status mapping
+- Testing information
+- Common code patterns
+
+**Best For**: Quick lookup for traffic source details and code patterns.
 
 ---
 
@@ -233,30 +278,34 @@ Comprehensive testing documentation:
 
 | Document | Lines | Type | Date |
 |----------|-------|------|------|
-| project-overview-pdr.md | 445 | Comprehensive | Jan 1 |
-| system-architecture.md | 747 | Architecture | Jan 2 |
+| project-overview-pdr.md | 445 | Comprehensive | Jan 2 |
+| system-architecture.md | 800+ | Architecture | Jan 2 |
 | code-standards.md | ~250 | Standards | Jan 1 |
-| api-docs.md | 900+ | API Reference | Jan 2 |
+| api-docs.md | 950+ | API Reference | Jan 2 |
+| PHASE-03-SUMMARY.md | 215 | Phase Summary | Jan 2 |
 | PHASE-05-SUMMARY.md | 1200+ | Implementation | Jan 2 |
+| PHASE-06-SUMMARY.md | 2500+ | Implementation | Jan 2 |
+| TRAFFIC-SOURCES-QUICK-REFERENCE.md | 450+ | Quick Reference | Jan 2 |
 | QUICK-START-API.md | 350+ | Quick Reference | Jan 2 |
 | testing-guide.md | ~500 | Testing | Jan 2 |
-| PHASE-03-SUMMARY.md | 215 | Phase Summary | Jan 2 |
 
-**Total Documentation**: 4,400+ lines
+**Total Documentation**: 7,650+ lines
 
 ---
 
 ## Phase Timeline & Status
 
 ```
-Phase 01: Project Setup & Core Models            ✓ Complete (Dec 31)
-Phase 02: Backend Unit Tests (78 tests)           ✓ Complete (Jan 1)
-Phase 03: Backend Integration Tests (65 tests)    ✓ Complete (Jan 2)
-Phase 04: Route Integration Tests (65 tests)      ✓ Complete (Jan 2)
-Phase 05: API Routes Implementation              ✓ Complete (Jan 2)
-Phase 06: Frontend Development                    In Progress
-Phase 07: E2E Testing                            Pending
-Phase 08: Production Deployment                  Pending
+Phase 01: Project Setup & Core Models             ✓ Complete (Dec 31)
+Phase 02: Backend Unit Tests (78 tests)            ✓ Complete (Jan 1)
+Phase 03: Backend Integration Tests (65 tests)     ✓ Complete (Jan 2)
+Phase 04: Route Integration Tests (65 tests)       ✓ Complete (Jan 2)
+Phase 05: API Routes Implementation               ✓ Complete (Jan 2)
+Phase 06: Traffic Source Adapters (4 sources)     ✓ Complete (Jan 2)
+Phase 07: Campaign Sync Service                    In Progress
+Phase 08: Frontend Development                    Pending
+Phase 09: E2E Testing                            Pending
+Phase 10: Production Deployment                  Pending
 ```
 
 ---
@@ -331,8 +380,8 @@ For questions or clarifications about:
 ## Document Maintenance
 
 **Last Review**: January 2, 2026
-**Documentation Status**: Current with Phase 05
-**Next Review**: Upon Phase 06 completion
+**Documentation Status**: Current with Phase 06
+**Next Review**: Upon Phase 07 completion
 
 ### To Update Documentation:
 1. Modify relevant document
@@ -346,6 +395,7 @@ For questions or clarifications about:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1 | Jan 2 | Added Phase 06 Traffic Source Adapters documentation |
 | 1.0 | Jan 2 | Initial Phase 05 documentation |
 
 ---

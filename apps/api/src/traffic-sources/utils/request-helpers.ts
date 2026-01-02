@@ -71,3 +71,42 @@ export function parsePagination(headers: Headers, defaultPerPage = 100): Paginat
     hasMore: page * perPage < total,
   }
 }
+
+/**
+ * Extract standardized metrics from API response data
+ */
+export interface MetricsData {
+  spend?: number
+  spent?: number
+  impressions?: number
+  clicks?: number
+  conversions?: number
+  cpc?: number
+}
+
+export interface CampaignMetrics {
+  spend: number
+  impressions: number
+  clicks: number
+  conversions: number
+  ctr: number
+  cpa: number
+  cpc: number
+}
+
+export function extractMetrics(data: MetricsData): CampaignMetrics {
+  const spend = data.spent || data.spend || 0
+  const impressions = data.impressions || 0
+  const clicks = data.clicks || 0
+  const conversions = data.conversions || 0
+
+  return {
+    spend,
+    impressions,
+    clicks,
+    conversions,
+    ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+    cpa: conversions > 0 ? spend / conversions : 0,
+    cpc: data.cpc || (clicks > 0 ? spend / clicks : 0),
+  }
+}

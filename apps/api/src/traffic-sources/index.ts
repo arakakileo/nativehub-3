@@ -1,5 +1,8 @@
 import type { TrafficSource, TrafficSourceCredentials, AuthResult } from './interface.js'
 import { RevcontentSource } from './revcontent/index.js'
+import { TaboolaSource } from './taboola/index.js'
+import { OutbrainSource } from './outbrain/index.js'
+import { MgidSource } from './mgid/index.js'
 import { db } from '../lib/db.js'
 import { sourceAccounts } from '../db/schema.js'
 import { decryptCredentials } from '../lib/crypto.js'
@@ -8,15 +11,14 @@ import { AppError } from '../middleware/error-handler.js'
 import { logger } from '../lib/logger.js'
 
 export { TrafficSource, TrafficSourceCredentials, AuthResult }
-export { RevcontentSource }
+export { RevcontentSource, TaboolaSource, OutbrainSource, MgidSource }
 
 // Traffic source registry
 const sourceClasses: Record<string, new () => TrafficSource> = {
   revcontent: RevcontentSource,
-  // TODO: Add other sources
-  // taboola: TaboolaSource,
-  // outbrain: OutbrainSource,
-  // mgid: MgidSource,
+  taboola: TaboolaSource,
+  outbrain: OutbrainSource,
+  mgid: MgidSource,
 }
 
 /**

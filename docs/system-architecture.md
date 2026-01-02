@@ -236,61 +236,121 @@ async evaluate(campaign: Campaign, rules: Rule[]) {
 
 ### 5. Traffic Source Integration Layer
 
-**Purpose**: Integrate with external traffic source APIs
+**Status**: Phase 06 - Complete (4 sources implemented)
 
 **Supported Sources**:
-- Revcontent (Phase 03)
-- Taboola (Phase 03)
-- Outbrain (Phase 03)
-- MGID (Phase 03)
+- Revcontent (OAuth2, Phase 03)
+- Taboola (OAuth2 + account ID, Phase 06)
+- Outbrain (Basic auth + token, Phase 06)
+- MGID (API key header, Phase 06)
 
-**Interface**:
+**Base Interface**:
 ```typescript
 interface TrafficSource {
-  authenticate(credentials: Credentials): Promise<void>
-  fetchCampaigns(): Promise<Campaign[]>
-  updateBid(campaignId: string, newBid: number): Promise<void>
-  blacklistWidget(campaignId: string, widgetId: string): Promise<void>
+  // Authentication
+  authenticate(credentials: TrafficSourceCredentials): Promise<AuthResult>
+
+  // Campaign management
+  getCampaigns(options?: ListCampaignsOptions): Promise<NormalizedCampaign[]>
+  getCampaign(campaignId: string): Promise<NormalizedCampaign>
+  toggleCampaign(campaignId: string): Promise<{ enabled: boolean }>
+
+  // Widget (publisher) management
+  getWidgets(options: ListWidgetsOptions): Promise<NormalizedWidget[]>
+  blacklistWidget(campaignId: string, widgetId: string): Promise<BlacklistResult>
+  adjustWidgetBid(campaignId: string, widgetId: string, newBid: number): Promise<BidAdjustmentResult>
 }
 ```
 
-**Example Implementation (Revcontent)**:
+**Implementation Pattern**:
 ```typescript
-class RevcontentSource implements TrafficSource {
-  private apiKey: string
+// Base class with common functionality
+export class BaseTrafficSource implements TrafficSource {
+  protected accessToken?: string
+  protected tokenExpiresAt?: number
 
-  async fetchCampaigns(): Promise<Campaign[]> {
-    const response = await fetch('https://api.revcontent.com/campaigns', {
-      headers: { 'Authorization': `Bearer ${this.apiKey}` },
-    })
-    return response.json()
-  }
+  isAuthenticated(): boolean { /* check token validity */ }
+  isTokenExpiringSoon(bufferMs: number): boolean { /* check expiry */ }
+  setStoredToken(token: string, expiresAt: Date): void { /* restore */ }
+}
 
-  async updateBid(campaignId: string, newBid: number): Promise<void> {
-    await fetch(`https://api.revcontent.com/campaigns/${campaignId}`, {
-      method: 'PUT',
-      body: JSON.stringify({ bid: newBid }),
-    })
-  }
+// Platform-specific implementations
+export class TaboolaSource extends BaseTrafficSource {
+  readonly sourceId = 'taboola'
+  // Taboola-specific: OAuth2 with account ID
+}
+
+export class OutbrainSource extends BaseTrafficSource {
+  readonly sourceId = 'outbrain'
+  // Outbrain-specific: Basic auth with strict rate limits
+}
+
+export class MgidSource extends BaseTrafficSource {
+  readonly sourceId = 'mgid'
+  // MGID-specific: API key header (no token exchange)
 }
 ```
 
-**Rate Limiting**:
+**Factory & Caching**:
 ```typescript
-class RateLimiter {
-  private requests: number[] = []
-  private limit: number = 100 // requests per minute
+// Create source instance
+const source = createTrafficSource('taboola')
 
-  async throttle() {
-    const now = Date.now()
-    this.requests = this.requests.filter(t => now - t < 60000)
+// Get authenticated instance (with DB token management)
+const authenticated = await getAuthenticatedSource(sourceAccountId)
+// - Loads encrypted credentials from DB
+// - Authenticates if needed
+// - Caches instance in memory
+// - Updates token in DB after auth
+```
 
-    if (this.requests.length >= this.limit) {
-      const waitMs = 60000 - (now - this.requests[0])
-      await delay(waitMs)
-    }
+**Authentication Mechanisms**:
 
-    this.requests.push(now)
+| Source | Method | Token Validity | Rate Limit | Notes |
+|--------|--------|---|---|---|
+| Revcontent | OAuth2 | 1 hour | 100/min | Standard OAuth flow |
+| Taboola | OAuth2 | ~1 hour | 100/min | Client credentials flow |
+| Outbrain | Basic auth | 30 days | 30/sec | Very strict login rate (2/hour) |
+| MGID | API key | Never expires | 100/min | No token exchange needed |
+
+**Shared Utilities** (`utils/request-helpers.ts`):
+```typescript
+// Generic HTTP request with auth
+makeRequest<T>(url: string, options: RequestInit & { accessToken?: string }): Promise<T>
+
+// URL building with query params
+buildUrl(baseUrl: string, path: string, params?: Record<string, any>): string
+
+// Metric extraction (DRY utility)
+extractMetrics(data: MetricsData): CampaignMetrics {
+  // Handles all variations: 'spend'/'spent', calculates CTR/CPA/CPC
+}
+
+// Pagination parsing
+parsePagination(headers: Headers, defaultPerPage?: number): PaginationInfo
+```
+
+**Rate Limiting per Source**:
+```typescript
+// Each source has dedicated rate limiter
+private rateLimiter = getRateLimiter('taboola', { perMinute: 100 })
+
+// Called before every API request
+await this.rateLimiter.acquire()
+
+// Respects per-source limits
+// Prevents API throttling
+```
+
+**Error Handling**:
+```typescript
+// Methods return result objects, don't throw
+async blacklistWidget(campaignId: string, widgetId: string): Promise<BlacklistResult> {
+  try {
+    await makeRequest(/* ... */)
+    return { success: true, widgetId }
+  } catch (error) {
+    return { success: false, widgetId, error: error.message }
   }
 }
 ```
