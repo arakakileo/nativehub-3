@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Hono } from 'hono'
 import { db } from '../lib/db.js'
 import { sourceAccounts, optimizerCampaigns, optimizerRules, optimizerActions } from '../db/schema.js'
@@ -12,6 +12,19 @@ import {
 import { TEST_USER_ID_2 } from '../test/fixtures/index.js'
 import { z } from 'zod'
 import { validateBody } from '../middleware/validate.js'
+
+// Mock optimizerService
+vi.mock('../services/optimizer/index.js', () => ({
+  optimizerService: {
+    optimizeAll: vi.fn().mockResolvedValue({
+      totalActions: 5,
+      campaignsProcessed: 2,
+    }),
+  },
+}))
+
+import { optimizerService } from '../services/optimizer/index.js'
+const mockOptimizerService = vi.mocked(optimizerService)
 
 /**
  * Helper to seed optimizer campaign
@@ -343,6 +356,78 @@ function createOptimizerRoutes() {
         })),
       })
     })
+    // List all rules for user's optimizer campaigns
+    .get('/rules', async (c) => {
+      const user = c.get('user')
+
+      // Get user's source accounts
+      const accounts = await db.select({ id: sourceAccounts.id })
+        .from(sourceAccounts)
+        .where(eq(sourceAccounts.userId, user.id))
+
+      if (accounts.length === 0) {
+        return c.json({ data: [] })
+      }
+
+      const accountIds = accounts.map((a) => a.id)
+
+      // Get optimizer campaigns for those accounts
+      const campaigns = await db.select().from(optimizerCampaigns)
+
+      const userCampaigns = campaigns.filter((c) =>
+        accountIds.includes(c.sourceAccountId)
+      )
+
+      if (userCampaigns.length === 0) {
+        return c.json({ data: [] })
+      }
+
+      // Get rules for those campaigns
+      const campaignIds = userCampaigns.map((c) => c.id)
+      const rules = await db.select().from(optimizerRules)
+
+      const userRules = rules.filter((r) =>
+        campaignIds.includes(r.optimizerCampaignId)
+      )
+
+      return c.json({
+        data: userRules.map((r) => ({
+          id: r.id,
+          optimizerCampaignId: r.optimizerCampaignId,
+          name: r.name,
+          enabled: r.enabled,
+          priority: r.priority,
+          ruleType: r.ruleType,
+          templateId: r.templateId,
+          condition: r.condition,
+          action: r.action,
+          createdAt: r.createdAt,
+          updatedAt: r.updatedAt,
+        })),
+      })
+    })
+    // Trigger manual optimization run
+    .post('/run', async (c) => {
+      const user = c.get('user')
+
+      // Get user's source accounts to verify they have campaigns
+      const accounts = await db.select({ id: sourceAccounts.id })
+        .from(sourceAccounts)
+        .where(eq(sourceAccounts.userId, user.id))
+
+      if (accounts.length === 0) {
+        return c.json({ actionsCount: 0, campaignsProcessed: 0, errors: [] })
+      }
+
+      // Run optimization for all campaigns
+      const result = await optimizerService.optimizeAll()
+
+      return c.json({
+        actionsCount: result.totalActions,
+        campaignsProcessed: result.campaignsProcessed,
+        errors: [],
+      })
+    })
 }
 
 describe('Optimizer Routes - Integration (TDD)', () => {
@@ -660,6 +745,168 @@ describe('Optimizer Routes - Integration (TDD)', () => {
       expect(res.status).toBe(200)
       const json = await res.json()
       expect(json.data).toHaveLength(3)
+    })
+  })
+
+  describe('GET /api/v1/optimizer/rules', () => {
+    it('should return 401 without auth header', async () => {
+      const res = await client.get('/api/v1/optimizer/rules')
+      expect(res.status).toBe(401)
+    })
+
+    it('should return empty array when no campaigns', async () => {
+      const res = await client.get('/api/v1/optimizer/rules', {
+        headers: createAuthHeaders(),
+      })
+      expect(res.status).toBe(200)
+      const json = await res.json()
+      expect(json.data).toEqual([])
+    })
+
+    it('should return rules for user campaigns only', async () => {
+      const myAccount = await seedSourceAccount({ name: 'My Account' })
+      const otherAccount = await seedSourceAccount({
+        userId: TEST_USER_ID_2,
+        name: 'Other Account',
+      })
+
+      const myCampaign = await seedOptimizerCampaign({
+        sourceAccountId: myAccount.id,
+        externalCampaignId: 'my-camp',
+      })
+      const otherCampaign = await seedOptimizerCampaign({
+        sourceAccountId: otherAccount.id,
+        externalCampaignId: 'other-camp',
+      })
+
+      await seedOptimizerRule({
+        optimizerCampaignId: myCampaign.id,
+        name: 'My Rule',
+      })
+      await seedOptimizerRule({
+        optimizerCampaignId: otherCampaign.id,
+        name: 'Other Rule',
+      })
+
+      const res = await client.get('/api/v1/optimizer/rules', {
+        headers: createAuthHeaders(),
+      })
+      expect(res.status).toBe(200)
+      const json = await res.json()
+      expect(json.data).toHaveLength(1)
+      expect(json.data[0].name).toBe('My Rule')
+    })
+
+    it('should return all rules across user campaigns', async () => {
+      const account = await seedSourceAccount()
+      const campaign1 = await seedOptimizerCampaign({
+        sourceAccountId: account.id,
+        externalCampaignId: 'camp-1',
+      })
+      const campaign2 = await seedOptimizerCampaign({
+        sourceAccountId: account.id,
+        externalCampaignId: 'camp-2',
+      })
+
+      await seedOptimizerRule({
+        optimizerCampaignId: campaign1.id,
+        name: 'Rule 1',
+      })
+      await seedOptimizerRule({
+        optimizerCampaignId: campaign1.id,
+        name: 'Rule 2',
+      })
+      await seedOptimizerRule({
+        optimizerCampaignId: campaign2.id,
+        name: 'Rule 3',
+      })
+
+      const res = await client.get('/api/v1/optimizer/rules', {
+        headers: createAuthHeaders(),
+      })
+      expect(res.status).toBe(200)
+      const json = await res.json()
+      expect(json.data).toHaveLength(3)
+    })
+
+    it('should include rule properties', async () => {
+      const account = await seedSourceAccount()
+      const campaign = await seedOptimizerCampaign({
+        sourceAccountId: account.id,
+      })
+
+      await seedOptimizerRule({
+        optimizerCampaignId: campaign.id,
+        name: 'Blacklist No Conversions',
+        enabled: true,
+        priority: 5,
+        ruleType: 'template',
+        templateId: 'blacklist_no_conv',
+      })
+
+      const res = await client.get('/api/v1/optimizer/rules', {
+        headers: createAuthHeaders(),
+      })
+      expect(res.status).toBe(200)
+      const json = await res.json()
+      expect(json.data[0]).toMatchObject({
+        name: 'Blacklist No Conversions',
+        enabled: true,
+        priority: 5,
+        ruleType: 'template',
+        templateId: 'blacklist_no_conv',
+      })
+      expect(json.data[0].id).toBeDefined()
+      expect(json.data[0].optimizerCampaignId).toBe(campaign.id)
+    })
+  })
+
+  describe('POST /api/v1/optimizer/run', () => {
+    it('should return 401 without auth header', async () => {
+      const res = await client.post('/api/v1/optimizer/run', {})
+      expect(res.status).toBe(401)
+    })
+
+    it('should return 0 when no campaigns', async () => {
+      const res = await client.post('/api/v1/optimizer/run', {}, {
+        headers: createAuthHeaders(),
+      })
+      expect(res.status).toBe(200)
+      const json = await res.json()
+      expect(json.actionsCount).toBe(0)
+      expect(json.campaignsProcessed).toBe(0)
+      expect(json.errors).toEqual([])
+    })
+
+    it('should trigger optimization and return results', async () => {
+      const account = await seedSourceAccount()
+      await seedOptimizerCampaign({
+        sourceAccountId: account.id,
+      })
+
+      const res = await client.post('/api/v1/optimizer/run', {}, {
+        headers: createAuthHeaders(),
+      })
+      expect(res.status).toBe(200)
+      const json = await res.json()
+      expect(json.actionsCount).toBe(5)
+      expect(json.campaignsProcessed).toBe(2)
+      expect(json.errors).toEqual([])
+    })
+
+    it('should call optimizerService.optimizeAll', async () => {
+      const account = await seedSourceAccount()
+      await seedOptimizerCampaign({
+        sourceAccountId: account.id,
+      })
+
+      mockOptimizerService.optimizeAll.mockClear()
+
+      await client.post('/api/v1/optimizer/run', {}, {
+        headers: createAuthHeaders(),
+      })
+
+      expect(mockOptimizerService.optimizeAll).toHaveBeenCalledTimes(1)
     })
   })
 })

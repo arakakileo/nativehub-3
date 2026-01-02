@@ -2,7 +2,7 @@
 
 **Base URL**: `http://localhost:3001/api/v1`
 **Version**: 3.0.0
-**Status**: Phase 02 - Campaign Sync Service Integrated
+**Status**: Phase C - Optimizer API Routes Complete
 
 ---
 
@@ -776,6 +776,154 @@ Response (401 Unauthorized):
 {
   "error": "Invalid token",
   "code": "UNAUTHORIZED"
+}
+```
+
+---
+
+## Rate Limiting
+
+Rate limiting is enforced per IP address with different limits for authentication and API endpoints to prevent brute force attacks and ensure fair resource usage.
+
+### Rate Limit Tiers
+
+| Endpoint Category | Window | Max Requests | Purpose |
+|---|---|---|---|
+| **Authentication** (`/api/auth/*`) | 15 minutes | 10 | Brute force protection |
+| **API** (`/api/v1/*`) | 1 minute | 100 | General API usage |
+
+### Rate Limit Headers
+
+All responses include rate limit information:
+```
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 95
+X-RateLimit-Reset: 1704067260
+```
+
+**Header Descriptions**:
+- `X-RateLimit-Limit`: Maximum requests allowed in the window
+- `X-RateLimit-Remaining`: Requests remaining in current window
+- `X-RateLimit-Reset`: Unix timestamp when limit resets
+
+### GET /optimizer/rules
+
+List all optimizer rules for user's campaigns.
+
+**Authentication**: Required
+
+**Example Request**:
+```bash
+curl -X GET "http://localhost:3001/api/v1/optimizer/rules" \
+  -H "Cookie: nativehub_session=<session-cookie>"
+```
+
+**Example Response** (200 OK):
+```json
+{
+  "data": [
+    {
+      "id": "e47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "optimizerCampaignId": "d47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "name": "Blacklist No Conversions",
+      "enabled": true,
+      "priority": 10,
+      "ruleType": "template",
+      "templateId": "blacklist_no_conv",
+      "condition": {
+        "metric": "spend",
+        "operator": "gt",
+        "value": 50
+      },
+      "action": {
+        "type": "blacklist"
+      },
+      "createdAt": "2026-01-02T08:00:00Z",
+      "updatedAt": "2026-01-02T08:00:00Z"
+    }
+  ]
+}
+```
+
+**Status Codes**:
+- `200 OK` - Success
+- `401 Unauthorized` - Missing or invalid session
+
+---
+
+### POST /optimizer/run
+
+Trigger manual optimization run for all user campaigns.
+
+**Authentication**: Required
+**Content-Type**: `application/json`
+
+**Request Body**: Empty or `{}`
+
+**Example Request**:
+```bash
+curl -X POST "http://localhost:3001/api/v1/optimizer/run" \
+  -H "Content-Type: application/json" \
+  -H "Cookie: nativehub_session=<session-cookie>" \
+  -d '{}'
+```
+
+**Example Response** (200 OK):
+```json
+{
+  "actionsCount": 5,
+  "campaignsProcessed": 2,
+  "errors": []
+}
+```
+
+**Response Fields**:
+- `actionsCount` - Number of optimization actions executed
+- `campaignsProcessed` - Number of campaigns processed
+- `errors` - Array of any errors encountered (empty if successful)
+
+**Status Codes**:
+- `200 OK` - Optimization completed
+- `401 Unauthorized` - Missing or invalid session
+
+**Notes**:
+- If no campaigns exist, returns `actionsCount: 0` and `campaignsProcessed: 0`
+- Calls `optimizerService.optimizeAll()` to execute optimization
+- Returns immediately with results from service execution
+
+---
+
+## Error Handling
+
+### Error Response Format
+
+```json
+{
+  "error": "Human-readable error message",
+  "code": "ERROR_CODE"
+}
+```
+
+### Common Error Codes
+
+| Code | Status | Meaning |
+|------|--------|---------|
+| UNAUTHORIZED | 401 | Missing or invalid session |
+| NOT_FOUND | 404 | Resource not found or not owned by user |
+| VALIDATION_ERROR | 400 | Invalid request body or parameters |
+| CONFLICT | 409 | Resource already exists (duplicate) |
+| INTERNAL_ERROR | 500 | Server error (see logs) |
+
+### Example Error Response
+
+```bash
+curl -X GET "http://localhost:3001/api/v1/optimizer/campaigns"
+```
+
+Response (401 Unauthorized):
+```json
+{
+  "error": "Unauthorized"
 }
 ```
 

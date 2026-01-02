@@ -4,6 +4,7 @@ import { eq, and } from 'drizzle-orm'
 import { validateBody } from '../middleware/validate.js'
 import { db } from '../lib/db.js'
 import { sourceAccounts, optimizerCampaigns, optimizerRules, optimizerActions } from '../db/schema.js'
+import { optimizerService } from '../services/optimizer/index.js'
 
 // Validation schemas
 const CreateOptimizerCampaignSchema = z.object({
@@ -253,5 +254,79 @@ export const optimizerRoutes = new Hono()
         error: a.error,
         createdAt: a.createdAt,
       })),
+    })
+  })
+
+  // List all rules for user's optimizer campaigns
+  .get('/rules', async (c) => {
+    const userId = c.get('userId')
+
+    // Get user's source accounts
+    const accounts = await db.select({ id: sourceAccounts.id })
+      .from(sourceAccounts)
+      .where(eq(sourceAccounts.userId, userId))
+
+    if (accounts.length === 0) {
+      return c.json({ data: [] })
+    }
+
+    const accountIds = accounts.map((a) => a.id)
+
+    // Get optimizer campaigns for those accounts
+    const campaigns = await db.select().from(optimizerCampaigns)
+
+    const userCampaigns = campaigns.filter((c) =>
+      accountIds.includes(c.sourceAccountId)
+    )
+
+    if (userCampaigns.length === 0) {
+      return c.json({ data: [] })
+    }
+
+    // Get rules for those campaigns
+    const campaignIds = userCampaigns.map((c) => c.id)
+    const rules = await db.select().from(optimizerRules)
+
+    const userRules = rules.filter((r) =>
+      campaignIds.includes(r.optimizerCampaignId)
+    )
+
+    return c.json({
+      data: userRules.map((r) => ({
+        id: r.id,
+        optimizerCampaignId: r.optimizerCampaignId,
+        name: r.name,
+        enabled: r.enabled,
+        priority: r.priority,
+        ruleType: r.ruleType,
+        templateId: r.templateId,
+        condition: r.condition,
+        action: r.action,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+      })),
+    })
+  })
+
+  // Trigger manual optimization run
+  .post('/run', async (c) => {
+    const userId = c.get('userId')
+
+    // Get user's source accounts to verify they have campaigns
+    const accounts = await db.select({ id: sourceAccounts.id })
+      .from(sourceAccounts)
+      .where(eq(sourceAccounts.userId, userId))
+
+    if (accounts.length === 0) {
+      return c.json({ actionsCount: 0, campaignsProcessed: 0, errors: [] })
+    }
+
+    // Run optimization for all campaigns
+    const result = await optimizerService.optimizeAll()
+
+    return c.json({
+      actionsCount: result.totalActions,
+      campaignsProcessed: result.campaignsProcessed,
+      errors: [],
     })
   })
