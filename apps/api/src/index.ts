@@ -5,6 +5,9 @@ import { logger as honoLogger } from 'hono/logger'
 import { logger } from './lib/logger.js'
 import { errorHandler } from './middleware/error-handler.js'
 import { sourceAccountRoutes } from './routes/source-accounts.js'
+import { campaignRoutes } from './routes/campaigns.js'
+import { widgetRoutes } from './routes/widgets.js'
+import { optimizerRoutes } from './routes/optimizer.js'
 import { initJobs } from './jobs/index.js'
 
 const app = new Hono()
@@ -27,9 +30,9 @@ app.get('/health', (c) => c.json({
 // API v1 routes
 const apiV1 = new Hono()
   .route('/source-accounts', sourceAccountRoutes)
-  // .route('/campaigns', campaignRoutes)
-  // .route('/widgets', widgetRoutes)
-  // .route('/optimizer', optimizerRoutes)
+  .route('/campaigns', campaignRoutes)
+  .route('/widgets', widgetRoutes)
+  .route('/optimizer', optimizerRoutes)
 
 app.route('/api/v1', apiV1)
 

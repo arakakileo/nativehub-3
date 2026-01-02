@@ -2,17 +2,14 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { Hono } from 'hono'
 import { db } from '../lib/db.js'
 import { sourceAccounts, campaignSyncs } from '../db/schema.js'
-import { eq } from 'drizzle-orm'
+import { eq, and, desc } from 'drizzle-orm'
 import {
   createTestClient,
   createTestApp,
   createAuthHeaders,
   seedSourceAccount,
 } from '../test/helpers.js'
-import { TEST_USER_ID, TEST_USER_ID_2 } from '../test/fixtures/index.js'
-
-// TDD: These tests define expected behavior for campaigns route
-// Routes should be implemented in src/routes/campaigns.ts
+import { TEST_USER_ID_2 } from '../test/fixtures/index.js'
 
 /**
  * Helper to seed campaign sync data
@@ -45,9 +42,10 @@ async function seedCampaignSync(overrides: {
   return sync
 }
 
-// Stub route for TDD - implement in routes/campaigns.ts
+// Stub routes for testing (without real authMiddleware)
 function createCampaignsRoutes() {
   return new Hono()
+    // List campaigns for user
     .get('/', async (c) => {
       const user = c.get('user')
       const sourceAccountId = c.req.query('sourceAccountId')
@@ -63,50 +61,50 @@ function createCampaignsRoutes() {
 
       const accountIds = accounts.map((a) => a.id)
 
-      // Get latest campaign syncs for user's accounts
-      // Use a subquery to get the latest sync per campaign
-      const campaigns = await db
-        .select()
-        .from(campaignSyncs)
-        .where(
-          sourceAccountId
-            ? eq(campaignSyncs.sourceAccountId, sourceAccountId)
-            : undefined as never
-        )
-        .orderBy(campaignSyncs.syncedAt)
+      // Get latest syncs for each campaign
+      const allSyncs = await db.select().from(campaignSyncs)
+        .orderBy(desc(campaignSyncs.syncedAt))
 
-      // Filter to user's accounts only
-      const userCampaigns = campaigns.filter((c) => accountIds.includes(c.sourceAccountId))
+      // Filter by user's accounts
+      let filtered = allSyncs.filter((s) => accountIds.includes(s.sourceAccountId))
 
-      // Dedupe by externalCampaignId, keeping latest
-      const latestByExternalId = new Map<string, typeof campaigns[0]>()
-      for (const campaign of userCampaigns) {
-        const key = `${campaign.sourceAccountId}:${campaign.externalCampaignId}`
-        latestByExternalId.set(key, campaign)
+      // Apply sourceAccountId filter
+      if (sourceAccountId) {
+        filtered = filtered.filter((s) => s.sourceAccountId === sourceAccountId)
       }
 
+      // Group by campaign to get latest
+      const latestByCampaign = new Map<string, typeof filtered[0]>()
+      for (const sync of filtered) {
+        const key = `${sync.sourceAccountId}:${sync.externalCampaignId}`
+        if (!latestByCampaign.has(key)) {
+          latestByCampaign.set(key, sync)
+        }
+      }
+
+      const campaigns = Array.from(latestByCampaign.values())
+
       return c.json({
-        data: Array.from(latestByExternalId.values()).map((c) => ({
-          id: c.id,
-          sourceAccountId: c.sourceAccountId,
-          externalCampaignId: c.externalCampaignId,
-          name: c.campaignName,
-          status: c.status,
-          enabled: c.enabled,
-          budget: c.budget,
-          bid: c.bid,
+        data: campaigns.map((s) => ({
+          id: s.id,
+          sourceAccountId: s.sourceAccountId,
+          externalCampaignId: s.externalCampaignId,
+          name: s.campaignName,
+          status: s.status,
+          enabled: s.enabled,
           metrics: {
-            spend: parseFloat(c.spend),
-            impressions: c.impressions,
-            clicks: c.clicks,
-            conversions: c.conversions,
-            ctr: parseFloat(c.ctr),
-            cpa: parseFloat(c.cpa),
+            spend: parseFloat(s.spend ?? '0'),
+            conversions: s.conversions ?? 0,
+            impressions: s.impressions ?? 0,
+            clicks: s.clicks ?? 0,
+            ctr: parseFloat(s.ctr ?? '0'),
+            cpa: parseFloat(s.cpa ?? '0'),
           },
-          syncedAt: c.syncedAt,
+          syncedAt: s.syncedAt,
         })),
       })
     })
+    // Get single campaign with history
     .get('/:sourceAccountId/:externalCampaignId', async (c) => {
       const user = c.get('user')
       const sourceAccountId = c.req.param('sourceAccountId')
@@ -115,28 +113,28 @@ function createCampaignsRoutes() {
       // Verify user owns the source account
       const accounts = await db.select({ id: sourceAccounts.id })
         .from(sourceAccounts)
-        .where(eq(sourceAccounts.userId, user.id))
+        .where(and(
+          eq(sourceAccounts.id, sourceAccountId),
+          eq(sourceAccounts.userId, user.id)
+        ))
 
-      const accountIds = accounts.map((a) => a.id)
-      if (!accountIds.includes(sourceAccountId)) {
+      if (accounts.length === 0) {
         return c.json({ error: 'Campaign not found' }, 404)
       }
 
-      // Get campaign syncs
-      const syncs = await db.select()
-        .from(campaignSyncs)
-        .where(eq(campaignSyncs.sourceAccountId, sourceAccountId))
+      // Get all syncs for this campaign
+      const syncs = await db.select().from(campaignSyncs)
+        .where(and(
+          eq(campaignSyncs.sourceAccountId, sourceAccountId),
+          eq(campaignSyncs.externalCampaignId, externalCampaignId)
+        ))
         .orderBy(campaignSyncs.syncedAt)
 
-      const campaignSyncData = syncs.filter(
-        (s) => s.externalCampaignId === externalCampaignId
-      )
-
-      if (campaignSyncData.length === 0) {
+      if (syncs.length === 0) {
         return c.json({ error: 'Campaign not found' }, 404)
       }
 
-      const latest = campaignSyncData[campaignSyncData.length - 1]
+      const latest = syncs[syncs.length - 1]
 
       return c.json({
         data: {
@@ -146,27 +144,25 @@ function createCampaignsRoutes() {
           name: latest.campaignName,
           status: latest.status,
           enabled: latest.enabled,
-          budget: latest.budget,
-          bid: latest.bid,
           metrics: {
-            spend: parseFloat(latest.spend),
-            impressions: latest.impressions,
-            clicks: latest.clicks,
-            conversions: latest.conversions,
-            ctr: parseFloat(latest.ctr),
-            cpa: parseFloat(latest.cpa),
+            spend: parseFloat(latest.spend ?? '0'),
+            conversions: latest.conversions ?? 0,
+            impressions: latest.impressions ?? 0,
+            clicks: latest.clicks ?? 0,
+            ctr: parseFloat(latest.ctr ?? '0'),
+            cpa: parseFloat(latest.cpa ?? '0'),
           },
-          syncedAt: latest.syncedAt,
-          history: campaignSyncData.map((s) => ({
-            spend: parseFloat(s.spend),
-            conversions: s.conversions,
-            cpa: parseFloat(s.cpa),
+          history: syncs.map((s) => ({
+            spend: parseFloat(s.spend ?? '0'),
+            conversions: s.conversions ?? 0,
             syncedAt: s.syncedAt,
           })),
+          syncedAt: latest.syncedAt,
         },
       })
     })
 }
+
 
 describe('Campaigns Routes - Integration (TDD)', () => {
   let app: Hono

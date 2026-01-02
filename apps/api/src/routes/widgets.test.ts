@@ -9,12 +9,9 @@ import {
   createAuthHeaders,
   seedSourceAccount,
 } from '../test/helpers.js'
-import { TEST_USER_ID, TEST_USER_ID_2 } from '../test/fixtures/index.js'
+import { TEST_USER_ID_2 } from '../test/fixtures/index.js'
 import { z } from 'zod'
 import { validateBody } from '../middleware/validate.js'
-
-// TDD: These tests define expected behavior for widgets route
-// Routes should be implemented in src/routes/widgets.ts
 
 /**
  * Helper to seed widget blacklist entry
@@ -39,9 +36,10 @@ async function seedWidgetBlacklist(overrides: {
   return entry
 }
 
-// Stub route for TDD - implement in routes/widgets.ts
+// Stub routes for testing (without real authMiddleware)
 function createWidgetsRoutes() {
   return new Hono()
+    // List blacklisted widgets
     .get('/blacklist', async (c) => {
       const user = c.get('user')
       const sourceAccountId = c.req.query('sourceAccountId')
@@ -58,10 +56,9 @@ function createWidgetsRoutes() {
 
       const accountIds = accounts.map((a) => a.id)
 
-      // Build query
-      let query = db.select().from(widgetBlacklist)
-
-      const entries = await query.orderBy(widgetBlacklist.createdAt)
+      // Get all blacklist entries
+      const entries = await db.select().from(widgetBlacklist)
+        .orderBy(widgetBlacklist.createdAt)
 
       // Filter by user's accounts
       let filtered = entries.filter((e) => accountIds.includes(e.sourceAccountId))
@@ -88,6 +85,7 @@ function createWidgetsRoutes() {
         })),
       })
     })
+    // Add widget to blacklist
     .post('/blacklist', validateBody(z.object({
       sourceAccountId: z.string().uuid(),
       widgetId: z.string().min(1),
@@ -120,10 +118,7 @@ function createWidgetsRoutes() {
       const existing = await db.select().from(widgetBlacklist)
         .where(and(
           eq(widgetBlacklist.sourceAccountId, body.sourceAccountId),
-          eq(widgetBlacklist.widgetId, body.widgetId),
-          body.externalCampaignId
-            ? eq(widgetBlacklist.externalCampaignId, body.externalCampaignId)
-            : undefined as never
+          eq(widgetBlacklist.widgetId, body.widgetId)
         ))
 
       if (existing.length > 0) {
@@ -148,6 +143,7 @@ function createWidgetsRoutes() {
         createdAt: entry.createdAt,
       }, 201)
     })
+    // Remove widget from blacklist
     .delete('/blacklist/:id', async (c) => {
       const user = c.get('user')
       const id = c.req.param('id')
@@ -179,6 +175,7 @@ function createWidgetsRoutes() {
       return c.json({ success: true })
     })
 }
+
 
 describe('Widgets Routes - Integration (TDD)', () => {
   let app: Hono

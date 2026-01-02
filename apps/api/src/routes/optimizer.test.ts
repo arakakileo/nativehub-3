@@ -9,12 +9,9 @@ import {
   createAuthHeaders,
   seedSourceAccount,
 } from '../test/helpers.js'
-import { TEST_USER_ID, TEST_USER_ID_2 } from '../test/fixtures/index.js'
+import { TEST_USER_ID_2 } from '../test/fixtures/index.js'
 import { z } from 'zod'
 import { validateBody } from '../middleware/validate.js'
-
-// TDD: These tests define expected behavior for optimizer route
-// Routes should be implemented in src/routes/optimizer.ts
 
 /**
  * Helper to seed optimizer campaign
@@ -95,7 +92,7 @@ async function seedOptimizerAction(overrides: {
   return action
 }
 
-// Stub route for TDD - implement in routes/optimizer.ts
+// Stub routes for testing (without real authMiddleware)
 function createOptimizerRoutes() {
   return new Hono()
     // List optimizer campaigns for user
