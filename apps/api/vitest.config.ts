@@ -1,6 +1,14 @@
 import { defineConfig } from 'vitest/config'
+import path from 'path'
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      // Map db module to test mock during tests
+      '../lib/db.js': path.resolve(__dirname, './src/test/mocks/db.ts'),
+      '../../lib/db.js': path.resolve(__dirname, './src/test/mocks/db.ts'),
+    },
+  },
   test: {
     globals: true,
     environment: 'node',

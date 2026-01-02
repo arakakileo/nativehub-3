@@ -95,8 +95,6 @@ describe('RuleEngine', () => {
       action: { type: 'blacklist' },
       enabled: true,
       priority: 1,
-      executionCount: 0,
-      lastExecutedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
       ...overrides,

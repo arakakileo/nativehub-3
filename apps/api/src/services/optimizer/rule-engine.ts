@@ -20,7 +20,7 @@ export interface WidgetData {
  * Generated action from rule evaluation
  */
 export interface GeneratedAction {
-  ruleId: string
+  ruleId: string | null
   ruleName: string
   actionType: OptimizerActionType
   targetType: 'widget' | 'campaign'

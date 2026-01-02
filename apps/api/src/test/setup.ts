@@ -1,11 +1,8 @@
 import { beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest'
-import { PGlite } from '@electric-sql/pglite'
-import { drizzle } from 'drizzle-orm/pglite'
-import * as schema from '../db/schema.js'
+import { db, pgClient, testDb } from './mocks/db.js'
 
-// Test database instance
-let pgClient: PGlite
-let testDb: ReturnType<typeof drizzle<typeof schema>>
+// Re-export for tests that need direct access
+export { db, pgClient, testDb }
 
 // Mock environment variables
 process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test'
@@ -15,19 +12,16 @@ process.env.NODE_ENV = 'test'
 
 // Initialize PGlite before all tests
 beforeAll(async () => {
-  // Create in-memory PostgreSQL
-  pgClient = new PGlite()
-  testDb = drizzle(pgClient, { schema })
-
-  // Create tables - manually create SQL from schema
+  // Create tables - use TEXT instead of BYTEA for PGlite compatibility
+  // (bytea works in production with postgres-js but PGlite has issues)
   await pgClient.exec(`
     CREATE TABLE IF NOT EXISTS source_accounts (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID NOT NULL,
       source_id TEXT NOT NULL,
       name TEXT NOT NULL,
-      credentials_encrypted BYTEA NOT NULL,
-      credentials_iv BYTEA NOT NULL,
+      credentials_encrypted TEXT NOT NULL,
+      credentials_iv TEXT NOT NULL,
       access_token TEXT,
       refresh_token TEXT,
       token_expires_at TIMESTAMPTZ,
@@ -159,14 +153,3 @@ afterAll(async () => {
   await pgClient.close()
   console.log('PGlite test database closed')
 })
-
-// Attach to global for test access
-declare global {
-  var testDb: ReturnType<typeof drizzle<typeof schema>>
-  var pgClient: PGlite
-}
-
-globalThis.testDb = testDb!
-globalThis.pgClient = pgClient!
-
-export { testDb, pgClient }
