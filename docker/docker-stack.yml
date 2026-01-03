@@ -41,7 +41,6 @@ services:
       start_period: 30s
     networks:
       - traefik-public
-      - nativehub-db
     logging:
       driver: "json-file"
       options:
@@ -85,6 +84,3 @@ services:
 networks:
   traefik-public:
     external: true
-  nativehub-db:
-    external: true
-    name: nativehub-supabase_nativehub-supabase-internal
