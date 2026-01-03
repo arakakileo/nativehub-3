@@ -30,13 +30,30 @@ check_requirements() {
         exit 1
     fi
 
+    # Validate required environment variables
+    source "$ENV_FILE"
+    if [ -z "${ENCRYPTION_KEY:-}" ] || [ "${ENCRYPTION_KEY}" = "" ]; then
+        log_error "ENCRYPTION_KEY not set in $ENV_FILE"
+        log_info "Generate with: openssl rand -hex 32"
+        exit 1
+    fi
+    if [ -z "${BETTER_AUTH_SECRET:-}" ] || [ "${BETTER_AUTH_SECRET}" = "" ]; then
+        log_error "BETTER_AUTH_SECRET not set in $ENV_FILE"
+        log_info "Generate with: openssl rand -base64 32"
+        exit 1
+    fi
+    if echo "${DATABASE_URL:-}" | grep -q "CHANGE_ME"; then
+        log_error "DATABASE_URL contains placeholder - update with real password"
+        exit 1
+    fi
+
     if ! command -v docker &> /dev/null; then
         log_error "Docker not found"
         exit 1
     fi
 
-    if ! docker network ls | grep -q traefik-public; then
-        log_error "Network 'traefik-public' not found. Create with: docker network create traefik-public"
+    if ! docker network ls | grep -q nativehub-supabase; then
+        log_error "Network 'nativehub-supabase_nativehub-supabase-internal' not found"
         exit 1
     fi
 
@@ -92,11 +109,18 @@ status() {
     echo ""
     log_info "Health Check:"
 
-    # API health
-    if curl -sf http://localhost:3001/health > /dev/null 2>&1; then
+    # API health (exposed on port 3002)
+    if curl -sf http://localhost:3002/health > /dev/null 2>&1; then
         echo -e "  API: ${GREEN}healthy${NC}"
     else
         echo -e "  API: ${RED}unhealthy${NC}"
+    fi
+
+    # Web health (exposed on port 8081)
+    if curl -sf http://localhost:8081/nginx-health > /dev/null 2>&1; then
+        echo -e "  Web: ${GREEN}healthy${NC}"
+    else
+        echo -e "  Web: ${RED}unhealthy${NC}"
     fi
 
     # Container logs (last 5 lines)
