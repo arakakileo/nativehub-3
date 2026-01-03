@@ -29,6 +29,8 @@ RUN adduser --system --uid 1001 hono
 # Copy everything from builder (including node_modules)
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
+# Copy drizzle-orm to root node_modules for better-auth peer dependency
+COPY --from=builder /app/apps/api/node_modules/drizzle-orm ./node_modules/drizzle-orm
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/packages/shared/package.json ./packages/shared/
