@@ -1,16 +1,16 @@
-import { scheduler } from './scheduler.js'
+import { initJobQueue, stopJobQueue, triggerJob, getJobStatus, boss } from './job-queue.js'
 import { logger } from '../lib/logger.js'
 
 /**
  * Initialize all background jobs
  */
-export function initJobs(): void {
-  if (process.env.NODE_ENV === 'test') {
+export async function initJobs(): Promise<void> {
+  if (process.env['NODE_ENV'] === 'test') {
     logger.info('Skipping job initialization in test mode')
     return
   }
 
-  scheduler.init()
+  await initJobQueue()
 }
 
-export { scheduler }
+export { stopJobQueue, triggerJob, getJobStatus, boss }

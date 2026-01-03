@@ -2,7 +2,7 @@
 
 **Base URL**: `http://localhost:3001/api/v1`
 **Version**: 3.0.0
-**Status**: Phase C - Optimizer API Routes Complete
+**Status**: Phase 07 - Job Queue Implementation Complete
 
 ---
 
@@ -13,8 +13,9 @@
 3. [Campaigns API](#campaigns-api)
 4. [Widgets API](#widgets-api)
 5. [Optimizer API](#optimizer-api)
-6. [Error Handling](#error-handling)
-7. [Rate Limiting](#rate-limiting)
+6. [Jobs API](#jobs-api)
+7. [Error Handling](#error-handling)
+8. [Rate Limiting](#rate-limiting)
 
 ---
 
@@ -740,6 +741,271 @@ curl -X GET "http://localhost:3001/api/v1/optimizer/campaigns/d47ac10b-58cc-4372
 - `200 OK` - Success
 - `401 Unauthorized` - Invalid token
 - `404 Not Found` - Campaign not found or not owned by user
+
+---
+
+## Jobs API
+
+Background job processing and monitoring via pg-boss job queue.
+
+### Overview
+
+The Jobs API provides endpoints to trigger and monitor background jobs (e.g., campaign synchronization). All jobs are persistent and survive server restarts via PostgreSQL storage.
+
+**Job States**:
+- `scheduled` - Waiting in queue for processing
+- `active` - Currently executing
+- `completed` - Successfully finished
+- `failed` - Failed after all retries
+- `cancelled` - Manually cancelled
+- `archived` - Old completed job (archived for storage)
+
+### POST /api/v1/jobs/trigger
+
+**Purpose**: Trigger a background job
+
+**Request**:
+```bash
+curl -X POST http://localhost:3001/api/v1/jobs/trigger \
+  -H "Content-Type: application/json" \
+  -d '{
+    "queue": "campaign-sync",
+    "data": {
+      "userId": "550e8400-e29b-41d4-a716-446655440000"
+    }
+  }'
+```
+
+**Request Body**:
+```json
+{
+  "queue": "campaign-sync",
+  "data": {
+    "userId": "string (required)"
+  }
+}
+```
+
+**Parameters**:
+- `queue` (string, required) - Job queue name
+  - `campaign-sync` - Synchronize campaigns from traffic sources
+- `data` (object, optional) - Job-specific data
+  - `userId` (string) - User ID for campaign sync job
+
+**Response** (202 Accepted):
+```json
+{
+  "jobId": "12345678-1234-1234-1234-123456789012",
+  "queue": "campaign-sync",
+  "status": "scheduled",
+  "createdAt": "2026-01-03T16:19:00Z"
+}
+```
+
+**Status Codes**:
+- `202 Accepted` - Job created and queued
+- `400 Bad Request` - Missing queue name or invalid parameters
+- `401 Unauthorized` - Not authenticated
+- `500 Internal Server Error` - Queue processing error
+
+**Error Response** (400):
+```json
+{
+  "error": "Missing required field: queue"
+}
+```
+
+---
+
+### GET /api/v1/jobs/:queue/:jobId
+
+**Purpose**: Get status and details of a background job
+
+**Request**:
+```bash
+curl -X GET "http://localhost:3001/api/v1/jobs/campaign-sync/12345678-1234-1234-1234-123456789012"
+```
+
+**Path Parameters**:
+- `queue` (string, required) - Job queue name (e.g., "campaign-sync")
+- `jobId` (string, required) - Job ID from trigger response
+
+**Response** (200 OK):
+```json
+{
+  "id": "12345678-1234-1234-1234-123456789012",
+  "queue": "campaign-sync",
+  "state": "completed",
+  "data": {
+    "userId": "550e8400-e29b-41d4-a716-446655440000"
+  },
+  "output": {
+    "campaignsCount": 42,
+    "syncedAt": "2026-01-03T16:20:15Z",
+    "duration": "1234ms"
+  },
+  "attempts": 5,
+  "attempts_made": 1,
+  "createdAt": "2026-01-03T16:19:00Z",
+  "startedAt": "2026-01-03T16:19:30Z",
+  "completedAt": "2026-01-03T16:20:15Z",
+  "error": null
+}
+```
+
+**Response Fields**:
+- `id` (string) - Unique job ID
+- `queue` (string) - Queue name
+- `state` (string) - Current job state (scheduled|active|completed|failed|cancelled|archived)
+- `data` (object) - Input data passed to job
+- `output` (object|null) - Job execution output (null if not completed)
+- `attempts` (number) - Max retry attempts allowed
+- `attempts_made` (number) - Actual execution attempts made
+- `createdAt` (string, ISO-8601) - Job creation timestamp
+- `startedAt` (string, ISO-8601|null) - Job start time
+- `completedAt` (string, ISO-8601|null) - Job completion time
+- `error` (object|null) - Error details if job failed
+
+**Error Object**:
+```json
+{
+  "message": "Connection timeout",
+  "stack": "Error: ECONNREFUSED at fetchCampaigns..."
+}
+```
+
+**Status Codes**:
+- `200 OK` - Job found and status returned
+- `401 Unauthorized` - Not authenticated
+- `404 Not Found` - Job not found
+- `400 Bad Request` - Invalid queue name
+
+**Error Response** (404):
+```json
+{
+  "error": "Job not found"
+}
+```
+
+---
+
+### Job Examples
+
+#### Example 1: Trigger Campaign Sync
+
+```bash
+# Request
+curl -X POST http://localhost:3001/api/v1/jobs/trigger \
+  -H "Content-Type: application/json" \
+  -d '{
+    "queue": "campaign-sync",
+    "data": {
+      "userId": "550e8400-e29b-41d4-a716-446655440000"
+    }
+  }'
+
+# Response (202 Accepted)
+{
+  "jobId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "queue": "campaign-sync",
+  "status": "scheduled",
+  "createdAt": "2026-01-03T16:19:00Z"
+}
+```
+
+#### Example 2: Check Job Status (In Progress)
+
+```bash
+# Request
+curl -X GET "http://localhost:3001/api/v1/jobs/campaign-sync/f47ac10b-58cc-4372-a567-0e02b2c3d479"
+
+# Response (200 OK)
+{
+  "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "queue": "campaign-sync",
+  "state": "active",
+  "data": {
+    "userId": "550e8400-e29b-41d4-a716-446655440000"
+  },
+  "output": null,
+  "attempts": 5,
+  "attempts_made": 1,
+  "createdAt": "2026-01-03T16:19:00Z",
+  "startedAt": "2026-01-03T16:19:30Z",
+  "completedAt": null,
+  "error": null
+}
+```
+
+#### Example 3: Check Job Status (Completed)
+
+```bash
+# Request
+curl -X GET "http://localhost:3001/api/v1/jobs/campaign-sync/f47ac10b-58cc-4372-a567-0e02b2c3d479"
+
+# Response (200 OK - after job completes)
+{
+  "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "queue": "campaign-sync",
+  "state": "completed",
+  "data": {
+    "userId": "550e8400-e29b-41d4-a716-446655440000"
+  },
+  "output": {
+    "campaignsCount": 42,
+    "syncedAt": "2026-01-03T16:20:15Z",
+    "duration": "1234ms"
+  },
+  "attempts": 5,
+  "attempts_made": 1,
+  "createdAt": "2026-01-03T16:19:00Z",
+  "startedAt": "2026-01-03T16:19:30Z",
+  "completedAt": "2026-01-03T16:20:15Z",
+  "error": null
+}
+```
+
+#### Example 4: Job Failed with Retries
+
+```bash
+# Response (200 OK - after all retries exhausted)
+{
+  "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "queue": "campaign-sync",
+  "state": "failed",
+  "data": {
+    "userId": "550e8400-e29b-41d4-a716-446655440000"
+  },
+  "output": null,
+  "attempts": 5,
+  "attempts_made": 5,
+  "createdAt": "2026-01-03T16:19:00Z",
+  "startedAt": "2026-01-03T16:19:30Z",
+  "completedAt": "2026-01-03T16:25:00Z",
+  "error": {
+    "message": "Connection timeout after 5 retries",
+    "stack": "Error: ECONNREFUSED at campaign-sync.ts:123:15"
+  }
+}
+```
+
+---
+
+### Retry Policy
+
+Failed jobs are automatically retried with exponential backoff:
+
+- **Max Retries**: 5
+- **Base Delay**: 30 seconds
+- **Backoff Formula**: delay = 30 × (2 ^ attemptNumber)
+
+**Retry Timeline**:
+- Attempt 1: 30s delay
+- Attempt 2: 60s delay
+- Attempt 3: 120s delay
+- Attempt 4: 240s delay
+- Attempt 5: 480s delay
+- Total: ~15 minutes of retries maximum
 
 ---
 

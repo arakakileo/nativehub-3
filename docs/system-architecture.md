@@ -271,7 +271,113 @@ async evaluate(campaign: Campaign, rules: Rule[]) {
 }
 ```
 
-### 5. Traffic Source Integration Layer
+### 5. Job Queue Layer
+
+**Status**: Phase 07 - Complete (pg-boss implementation)
+
+**Technology**: pg-boss (PostgreSQL-backed job queue)
+
+**Responsibilities**:
+- Persistent job storage and management
+- Background job processing and scheduling
+- Automatic retry with exponential backoff
+- Job lifecycle management and monitoring
+- Graceful shutdown with in-flight job draining
+
+**Architecture**:
+
+```typescript
+// Job Queue Manager - Central orchestrator
+class JobQueue {
+  private boss: PgBoss
+  private handlers: Map<string, JobHandler>
+
+  async start(): Promise<void>
+  async stop(): Promise<void>
+  async registerJobHandler(queue: string, handler: JobHandler): Promise<void>
+  async sendJob(queue: string, data: any): Promise<string>
+  async getJobStatus(jobId: string): Promise<JobStatus | null>
+}
+
+// Job Handler signature
+type JobHandler = (job: Job) => Promise<JobOutput>
+
+// Supported job types
+enum JobQueue {
+  'campaign-sync' = 'campaign sync from all traffic sources',
+  'cleanup' = 'cleanup and archive old jobs'
+}
+```
+
+**Key Features**:
+
+1. **Persistence**
+   - PostgreSQL-backed job storage
+   - Survives server restarts
+   - Automatic job resumption
+
+2. **Retry Strategy**
+   - Max 5 retries per job
+   - Exponential backoff: 30s × 2^attempt
+   - Configurable retry limits
+
+3. **Graceful Shutdown**
+   - SIGTERM/SIGINT handlers
+   - Waits for active jobs to complete
+   - Prevents mid-operation restarts
+
+4. **Job Lifecycle**
+   ```
+   created → scheduled → active → completed/failed → archived
+   ```
+
+**API Endpoints**:
+
+```
+POST /api/v1/jobs/trigger     - Trigger background job
+GET /api/v1/jobs/:queue/:jobId - Get job status
+```
+
+**Configuration**:
+
+```typescript
+const config = {
+  schema: 'pgboss',
+  archives: true,
+  archiveCompletedAfterSeconds: 86400 * 7,  // 7 days
+  retryLimit: 5,
+  expireInSeconds: 60 * 60 * 24,             // 24 hours
+  newJobCheckIntervalSeconds: 2
+}
+```
+
+**Integration**:
+
+Jobs are initialized at server startup:
+
+```typescript
+// apps/api/src/index.ts
+async function startServer() {
+  const jobQueue = await initializeJobQueue()
+  setupGracefulShutdown(jobQueue)
+  app.route('/api/v1/jobs', jobsRouter)
+}
+```
+
+**Example Usage**:
+
+```typescript
+// Trigger campaign sync job
+const jobId = await jobQueue.sendJob('campaign-sync', { userId: 'user-123' })
+
+// Poll job status
+const status = await jobQueue.getJobStatus(jobId)
+// status.state: 'scheduled'|'active'|'completed'|'failed'
+```
+
+---
+
+### 6. Traffic Source Integration Layer
 
 **Status**: Phase 06 - Complete (4 sources implemented)
 
@@ -392,7 +498,7 @@ async blacklistWidget(campaignId: string, widgetId: string): Promise<BlacklistRe
 }
 ```
 
-### 6. Data Access Layer
+### 7. Data Access Layer
 
 **Technology**: Drizzle ORM + PostgreSQL
 
@@ -457,7 +563,7 @@ optimizer_rules:
   - INDEX: optimizer_campaign_id (for filtering)
 ```
 
-### 7. Database Layer
+### 8. Database Layer
 
 **Technology**: PostgreSQL (Supabase)
 
