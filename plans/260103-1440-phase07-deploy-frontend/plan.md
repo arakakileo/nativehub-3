@@ -1,7 +1,7 @@
 ---
 title: "NativeHub 3.0 Phases 7-9: Job Queue, Deploy, Frontend"
 description: "Upgrade job queue to pg-boss, deploy to VPS with Traefik, build production-ready dashboard"
-status: in-progress
+status: in-progress (Phase 8 completed, Phase 9 pending)
 priority: P1
 effort: 13h
 branch: main
@@ -20,7 +20,7 @@ Complete production deployment pipeline: Replace node-cron with pg-boss for pers
 | Phase | Title | Priority | Effort | Status | Document |
 |-------|-------|----------|--------|--------|----------|
 | 7 | Job Queue Upgrade | P1 | 2h | completed | [phase-07-job-queue-upgrade.md](./phase-07-job-queue-upgrade.md) |
-| 8 | Production Deploy | P1 | 3h | pending | [phase-08-production-deploy.md](./phase-08-production-deploy.md) |
+| 8 | Production Deploy | P1 | 3h | completed | [phase-08-production-deploy.md](./phase-08-production-deploy.md) |
 | 9 | Frontend Dashboard | P2 | 8h | pending | [phase-09-frontend-dashboard.md](./phase-09-frontend-dashboard.md) |
 
 ## Dependencies
