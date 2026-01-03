@@ -5,20 +5,37 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.api
-    ports:
-      - "3001:3001"
     environment:
       - NODE_ENV=production
       - DATABASE_URL=${DATABASE_URL}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
-      - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL}
+      - FRONTEND_URL=${FRONTEND_URL}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      - traefik.enable=true
+      # HTTPS router
+      - traefik.http.routers.nativehub-api.rule=Host(`api.nativehub.arakakileo.com`)
+      - traefik.http.routers.nativehub-api.entrypoints=websecure
+      - traefik.http.routers.nativehub-api.tls=true
+      - traefik.http.routers.nativehub-api.tls.certresolver=letsencrypt
+      # Security headers
+      - traefik.http.routers.nativehub-api.middlewares=security-headers
+      # HTTP redirect
+      - traefik.http.routers.nativehub-api-http.rule=Host(`api.nativehub.arakakileo.com`)
+      - traefik.http.routers.nativehub-api-http.entrypoints=web
+      - traefik.http.routers.nativehub-api-http.middlewares=redirect-to-https
+      # Service
+      - traefik.http.services.nativehub-api.loadbalancer.server.port=3001
+    networks:
+      - traefik
     logging:
       driver: "json-file"
       options:
@@ -29,12 +46,46 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.web
-    ports:
-      - "3000:80"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      # HTTPS router
+      - traefik.http.routers.nativehub-web.rule=Host(`nativehub.arakakileo.com`)
+      - traefik.http.routers.nativehub-web.entrypoints=websecure
+      - traefik.http.routers.nativehub-web.tls=true
+      - traefik.http.routers.nativehub-web.tls.certresolver=letsencrypt
+      # Security headers
+      - traefik.http.routers.nativehub-web.middlewares=security-headers
+      # HTTP redirect
+      - traefik.http.routers.nativehub-web-http.rule=Host(`nativehub.arakakileo.com`)
+      - traefik.http.routers.nativehub-web-http.entrypoints=web
+      - traefik.http.routers.nativehub-web-http.middlewares=redirect-to-https
+      # Service
+      - traefik.http.services.nativehub-web.loadbalancer.server.port=80
+    networks:
+      - traefik
+
+  # Middleware definitions (using dummy container)
+  traefik-middleware:
+    image: alpine:3.19
+    command: sleep infinity
+    labels:
+      # HTTPS redirect
+      - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
+      - traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true
+      # Security headers
+      - traefik.http.middlewares.security-headers.headers.stsSeconds=31536000
+      - traefik.http.middlewares.security-headers.headers.stsIncludeSubdomains=true
+      - traefik.http.middlewares.security-headers.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.security-headers.headers.frameDeny=true
+      - traefik.http.middlewares.security-headers.headers.browserXssFilter=true
+    networks:
+      - traefik
     restart: unless-stopped
 
 networks:
-  default:
-    name: nativehub
+  traefik:
+    external: true

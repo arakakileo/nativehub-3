@@ -13,6 +13,8 @@ import { campaignRoutes } from './routes/campaigns.js'
 import { widgetRoutes } from './routes/widgets.js'
 import { optimizerRoutes } from './routes/optimizer.js'
 import { initJobs } from './jobs/index.js'
+import { db } from './lib/db.js'
+import { sql } from 'drizzle-orm'
 
 const app = new Hono()
 
@@ -46,12 +48,26 @@ app.use('/api/v1/*', apiRateLimiter)
 // Apply session middleware to all API v1 routes (protected)
 app.use('/api/v1/*', sessionMiddleware)
 
-// Health check (public)
-app.get('/health', (c) => c.json({
-  status: 'ok',
-  timestamp: new Date().toISOString(),
-  version: '3.0.0'
-}))
+// Health check (public) - verifies DB connectivity
+app.get('/health', async (c) => {
+  try {
+    await db.execute(sql`SELECT 1`)
+    return c.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      version: '3.0.0',
+      database: 'connected',
+    })
+  } catch (error) {
+    return c.json({
+      status: 'error',
+      timestamp: new Date().toISOString(),
+      version: '3.0.0',
+      database: 'disconnected',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }, 503)
+  }
+})
 
 // API v1 routes (all protected by sessionMiddleware)
 const apiV1 = new Hono()
