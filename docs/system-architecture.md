@@ -824,6 +824,36 @@ LOG_LEVEL=info
    - Stagger jobs to avoid spike load
    - Use pg-boss for reliable execution
 
+## Performance Baselines (Phase 10)
+
+### Lighthouse Audit Results
+
+**Test Date**: January 3, 2026
+**Test URL**: http://localhost:4173/login
+**Browser**: Desktop Chrome 143
+
+| Category | Score | Status | Target |
+|----------|-------|--------|--------|
+| **Performance** | **99** | ✓ Excellent | >90 |
+| **Accessibility** | **98** | ✓ Excellent | >90 |
+| **Best Practices** | **96** | ✓ Excellent | >90 |
+| **SEO** | **82** | Good | >75 |
+
+**Performance Metrics**:
+- First Contentful Paint: 1.7s (target: <3.0s)
+- Largest Contentful Paint: 1.8s (target: <2.5s)
+- Speed Index: 1.7s (target: <3.4s)
+- Total Blocking Time: <50ms (target: <200ms)
+- Cumulative Layout Shift: ~0.0 (target: <0.1)
+
+**Bundle Size**:
+- Production build (gzipped): 148KB
+- Main JS + CSS: ~180KB total
+- Code split: Lazy routes
+- Minified: Tree-shaking enabled
+
+---
+
 ## Monitoring & Observability
 
 ### Metrics to Track
@@ -833,12 +863,15 @@ LOG_LEVEL=info
    - Database query time
    - Sync job duration
    - Optimization run duration
+   - Lighthouse scores (continuous monitoring)
+   - Real User Monitoring (RUM) - Phase 11
 
 2. **Reliability**:
    - API error rate (4xx, 5xx)
    - Sync success/failure rate
    - Database connection pool utilization
    - Background job execution success rate
+   - E2E test pass rate
 
 3. **Business**:
    - Active users
@@ -882,8 +915,8 @@ logger.error({
 
 ```
         / \
-       /   \  E2E Tests
-      /     \ (Dashboard flows)
+       /   \  E2E Tests (Phase 10)
+      /     \ Playwright: 7 tests, 6 passing
      /-------\
     /         \  Integration Tests
    /           \ (Services with real DB)
@@ -892,7 +925,37 @@ logger.error({
 /______________\ (Services, utils, logic)
 ```
 
-### Test Infrastructure (Phase 02)
+### E2E Testing Infrastructure (Phase 10)
+
+**Framework**: Playwright Test v1.57.0
+
+**Configuration**:
+- Browser: Chromium Desktop
+- Base URL: http://localhost:4173 (production build)
+- HTML reporter with test results
+- Auto-server startup (npm run preview)
+- CI mode: 2 retries on failure
+
+**Test Suite**:
+- Dashboard tests: 4 tests (3 pass, 1 skipped)
+- Navigation tests: 3 tests (all pass)
+- Total: 7 tests, 6 passing (85.7% success)
+
+**Test Coverage**:
+- Authentication flows (redirect to login)
+- Form validation (email/password inputs)
+- Error handling (invalid credentials)
+- Page structure (headings, meta tags)
+- JavaScript error detection
+- Responsive design validation
+
+**Running E2E Tests**:
+```bash
+npm run test:e2e          # Run all tests headless
+npm run test:e2e:ui       # Run with interactive UI
+```
+
+### Unit & Integration Testing (Phase 02-03)
 
 1. **Unit Tests**:
    - Vitest framework
@@ -900,13 +963,18 @@ logger.error({
    - Mocked external APIs
    - 78 tests covering critical paths
 
-2. **Test Database**:
+2. **Integration Tests**:
+   - HTTP routes with real test DB
+   - 65 tests covering all endpoints
+   - Cross-user isolation verified
+
+3. **Test Database**:
    - Fresh schema per test suite
    - Auto-cleanup between tests
    - No shared state
    - Deterministic results
 
-3. **Mocking Strategy**:
+4. **Mocking Strategy**:
    - Module aliases for db mocking
    - vi.mock() for API clients
    - Fixtures for test data
