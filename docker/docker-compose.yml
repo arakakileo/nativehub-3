@@ -21,19 +21,21 @@ services:
       start_period: 30s
     labels:
       - traefik.enable=true
-      # HTTPS router
-      - traefik.http.routers.nativehub-api.rule=Host(`api.nativehub.arakakileo.com`)
-      - traefik.http.routers.nativehub-api.entrypoints=websecure
-      - traefik.http.routers.nativehub-api.tls=true
-      - traefik.http.routers.nativehub-api.tls.certresolver=letsencrypt
+      # HTTPS router (nativehub3 = unique name to avoid conflict with old nativehub)
+      - traefik.http.routers.nativehub3-api.rule=Host(`api-nativehub.arakakileo.com`)
+      - traefik.http.routers.nativehub3-api.entrypoints=websecure
+      - traefik.http.routers.nativehub3-api.tls=true
+      - traefik.http.routers.nativehub3-api.tls.certresolver=letsencrypt
+      - traefik.http.routers.nativehub3-api.priority=100
       # Security headers
-      - traefik.http.routers.nativehub-api.middlewares=security-headers
+      - traefik.http.routers.nativehub3-api.middlewares=security-headers
       # HTTP redirect
-      - traefik.http.routers.nativehub-api-http.rule=Host(`api.nativehub.arakakileo.com`)
-      - traefik.http.routers.nativehub-api-http.entrypoints=web
-      - traefik.http.routers.nativehub-api-http.middlewares=redirect-to-https
+      - traefik.http.routers.nativehub3-api-http.rule=Host(`api-nativehub.arakakileo.com`)
+      - traefik.http.routers.nativehub3-api-http.entrypoints=web
+      - traefik.http.routers.nativehub3-api-http.middlewares=redirect-to-https
+      - traefik.http.routers.nativehub3-api-http.priority=100
       # Service
-      - traefik.http.services.nativehub-api.loadbalancer.server.port=3001
+      - traefik.http.services.nativehub3-api.loadbalancer.server.port=3001
     networks:
       - traefik-public
       - nativehub-db
@@ -59,19 +61,21 @@ services:
       start_period: 10s
     labels:
       - traefik.enable=true
-      # HTTPS router
-      - traefik.http.routers.nativehub-web.rule=Host(`nativehub.arakakileo.com`)
-      - traefik.http.routers.nativehub-web.entrypoints=websecure
-      - traefik.http.routers.nativehub-web.tls=true
-      - traefik.http.routers.nativehub-web.tls.certresolver=letsencrypt
+      # HTTPS router (nativehub3 = unique name to avoid conflict with old nativehub)
+      - traefik.http.routers.nativehub3-web.rule=Host(`nativehub.arakakileo.com`)
+      - traefik.http.routers.nativehub3-web.entrypoints=websecure
+      - traefik.http.routers.nativehub3-web.tls=true
+      - traefik.http.routers.nativehub3-web.tls.certresolver=letsencrypt
+      - traefik.http.routers.nativehub3-web.priority=100
       # Security headers
-      - traefik.http.routers.nativehub-web.middlewares=security-headers
+      - traefik.http.routers.nativehub3-web.middlewares=security-headers
       # HTTP redirect
-      - traefik.http.routers.nativehub-web-http.rule=Host(`nativehub.arakakileo.com`)
-      - traefik.http.routers.nativehub-web-http.entrypoints=web
-      - traefik.http.routers.nativehub-web-http.middlewares=redirect-to-https
+      - traefik.http.routers.nativehub3-web-http.rule=Host(`nativehub.arakakileo.com`)
+      - traefik.http.routers.nativehub3-web-http.entrypoints=web
+      - traefik.http.routers.nativehub3-web-http.middlewares=redirect-to-https
+      - traefik.http.routers.nativehub3-web-http.priority=100
       # Service
-      - traefik.http.services.nativehub-web.loadbalancer.server.port=80
+      - traefik.http.services.nativehub3-web.loadbalancer.server.port=80
     networks:
       - traefik-public
 
