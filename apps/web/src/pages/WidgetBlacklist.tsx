@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Ban, Plus, Trash2, Search } from 'lucide-react'
+import { toast } from 'sonner'
 import { DataTable } from '../components/ui/DataTable'
 import { Button } from '../components/ui/Button'
+import { EmptyState } from '../components/ui/EmptyState'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type BlacklistEntry } from '../lib/api'
 import { getSourceColor } from '../lib/utils'
@@ -19,12 +21,20 @@ export function WidgetBlacklist() {
   const addMutation = useMutation({
     mutationFn: (data: { widgetId: string; sourceId: string; reason?: string }) =>
       api.addToBlacklist(data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['widgetBlacklist'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['widgetBlacklist'] })
+      toast.success('Widget added to blacklist')
+    },
+    onError: () => toast.error('Failed to add widget'),
   })
 
   const removeMutation = useMutation({
     mutationFn: (id: string) => api.removeFromBlacklist(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['widgetBlacklist'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['widgetBlacklist'] })
+      toast.success('Widget removed from blacklist')
+    },
+    onError: () => toast.error('Failed to remove widget'),
   })
 
   const [showForm, setShowForm] = useState(false)
@@ -85,6 +95,7 @@ export function WidgetBlacklist() {
         <Button
           size="sm"
           variant="ghost"
+          aria-label={`Remove widget ${w.widgetId} from blacklist`}
           onClick={() => {
             if (confirm('Remove from blacklist?')) removeMutation.mutate(w.id)
           }}
@@ -197,14 +208,24 @@ export function WidgetBlacklist() {
         ))}
       </div>
 
-      {/* Table */}
-      <DataTable
-        data={filtered}
-        columns={columns}
-        keyField="id"
-        isLoading={isLoading}
-        emptyMessage="No widgets blacklisted."
-      />
+      {/* Table or Empty State */}
+      {!isLoading && blacklist.length === 0 ? (
+        <EmptyState
+          icon={Ban}
+          title="No blacklisted widgets"
+          description="Block underperforming publishers to improve campaign ROI"
+          actionLabel="Add Widget"
+          onAction={() => setShowForm(true)}
+        />
+      ) : (
+        <DataTable
+          data={filtered}
+          columns={columns}
+          keyField="id"
+          isLoading={isLoading}
+          emptyMessage="No widgets match your search."
+        />
+      )}
     </div>
   )
 }

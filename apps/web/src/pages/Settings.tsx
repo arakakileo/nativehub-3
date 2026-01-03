@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Save, Bell, Clock, Shield } from 'lucide-react'
+import { Save, Bell, Clock, Shield, Moon, Sun, Monitor } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '../components/ui/Button'
 import { useAuthStore } from '../stores/authStore'
+import { useThemeStore } from '../stores/themeStore'
 
 export function Settings() {
   const user = useAuthStore((s) => s.user)
+  const { theme, setTheme } = useThemeStore()
   const [saved, setSaved] = useState(false)
 
   const [settings, setSettings] = useState({
@@ -20,6 +23,7 @@ export function Settings() {
   const handleSave = () => {
     // TODO: Save to backend
     setSaved(true)
+    toast.success('Settings saved')
     setTimeout(() => setSaved(false), 2000)
   }
 
@@ -58,6 +62,44 @@ export function Settings() {
               disabled
               className="w-full rounded-lg border bg-muted px-3 py-2 text-muted-foreground"
             />
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Appearance */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+        className="rounded-xl border bg-card p-6"
+      >
+        <div className="mb-4 flex items-center gap-3">
+          <Moon className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-semibold">Appearance</h2>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="mb-2 block text-sm font-medium">Theme</label>
+            <div className="flex gap-2">
+              {[
+                { value: 'light', label: 'Light', icon: Sun },
+                { value: 'dark', label: 'Dark', icon: Moon },
+                { value: 'system', label: 'System', icon: Monitor },
+              ].map(({ value, label, icon: Icon }) => (
+                <button
+                  key={value}
+                  onClick={() => setTheme(value as 'light' | 'dark' | 'system')}
+                  className={`flex flex-1 items-center justify-center gap-2 rounded-lg border p-3 transition-colors ${
+                    theme === value
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-muted hover:border-primary/50'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="text-sm font-medium">{label}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </motion.div>

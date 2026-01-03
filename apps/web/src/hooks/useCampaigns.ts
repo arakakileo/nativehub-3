@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { api } from '../lib/api'
 
 export function useCampaigns(sourceAccountId?: string) {
@@ -24,6 +25,8 @@ export function useUpdateCampaign() {
       api.updateCampaign(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['campaigns'] })
+      toast.success('Campaign updated')
     },
+    onError: () => toast.error('Failed to update campaign'),
   })
 }

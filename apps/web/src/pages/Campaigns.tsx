@@ -4,6 +4,7 @@ import { Filter, RefreshCw, Pause, Play } from 'lucide-react'
 import { DataTable } from '../components/ui/DataTable'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { Button } from '../components/ui/Button'
+import { CardSkeleton } from '../components/ui/Skeleton'
 import { useCampaigns, useUpdateCampaign } from '../hooks/useCampaigns'
 import { useSourceAccounts } from '../hooks/useSourceAccounts'
 import { formatCurrency, formatNumber, getSourceColor } from '../lib/utils'
@@ -94,6 +95,7 @@ export function Campaigns() {
         <Button
           size="sm"
           variant="ghost"
+          aria-label={c.status === 'active' ? `Pause ${c.name}` : `Resume ${c.name}`}
           onClick={() => toggleStatus(c)}
           disabled={updateMutation.isPending}
         >
@@ -152,17 +154,19 @@ export function Campaigns() {
         animate={{ opacity: 1, y: 0 }}
         className="grid grid-cols-4 gap-4"
       >
-        {[
-          { label: 'Total Campaigns', value: campaigns.length },
-          { label: 'Active', value: campaigns.filter((c: Campaign) => c.status === 'active').length },
-          { label: 'Paused', value: campaigns.filter((c: Campaign) => c.status === 'paused').length },
-          { label: 'Total Spend', value: formatCurrency(campaigns.reduce((sum: number, c: Campaign) => sum + (c.spend || 0), 0)) },
-        ].map((stat, i) => (
-          <div key={i} className="rounded-lg border bg-card p-4">
-            <p className="text-sm text-muted-foreground">{stat.label}</p>
-            <p className="mt-1 text-2xl font-bold">{stat.value}</p>
-          </div>
-        ))}
+        {isLoading
+          ? Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)
+          : [
+              { label: 'Total Campaigns', value: campaigns.length },
+              { label: 'Active', value: campaigns.filter((c: Campaign) => c.status === 'active').length },
+              { label: 'Paused', value: campaigns.filter((c: Campaign) => c.status === 'paused').length },
+              { label: 'Total Spend', value: formatCurrency(campaigns.reduce((sum: number, c: Campaign) => sum + (c.spend || 0), 0)) },
+            ].map((stat, i) => (
+              <div key={i} className="rounded-lg border bg-card p-4">
+                <p className="text-sm text-muted-foreground">{stat.label}</p>
+                <p className="mt-1 text-2xl font-bold">{stat.value}</p>
+              </div>
+            ))}
       </motion.div>
 
       {/* Table */}

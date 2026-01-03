@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { api, type OptimizerRule } from '../lib/api'
 
 export function useOptimizerRules() {
@@ -16,7 +17,9 @@ export function useCreateOptimizerRule() {
       api.createOptimizerRule(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['optimizerRules'] })
+      toast.success('Rule created')
     },
+    onError: () => toast.error('Failed to create rule'),
   })
 }
 
@@ -28,7 +31,9 @@ export function useUpdateOptimizerRule() {
       api.updateOptimizerRule(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['optimizerRules'] })
+      toast.success('Rule updated')
     },
+    onError: () => toast.error('Failed to update rule'),
   })
 }
 
@@ -39,7 +44,9 @@ export function useDeleteOptimizerRule() {
     mutationFn: (id: string) => api.deleteOptimizerRule(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['optimizerRules'] })
+      toast.success('Rule deleted')
     },
+    onError: () => toast.error('Failed to delete rule'),
   })
 }
 
@@ -58,6 +65,8 @@ export function useRunOptimizer() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['optimizerActions'] })
       queryClient.invalidateQueries({ queryKey: ['campaigns'] })
+      toast.success('Optimizer run complete')
     },
+    onError: () => toast.error('Optimizer run failed'),
   })
 }

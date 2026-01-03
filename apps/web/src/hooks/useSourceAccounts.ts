@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { api, type CreateSourceAccountInput } from '../lib/api'
 
 export function useSourceAccounts() {
@@ -23,7 +24,9 @@ export function useCreateSourceAccount() {
     mutationFn: (data: CreateSourceAccountInput) => api.createSourceAccount(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sourceAccounts'] })
+      toast.success('Account created successfully')
     },
+    onError: () => toast.error('Failed to create account'),
   })
 }
 
@@ -35,7 +38,9 @@ export function useUpdateSourceAccount() {
       api.updateSourceAccount(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sourceAccounts'] })
+      toast.success('Account updated')
     },
+    onError: () => toast.error('Failed to update account'),
   })
 }
 
@@ -46,7 +51,9 @@ export function useDeleteSourceAccount() {
     mutationFn: (id: string) => api.deleteSourceAccount(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sourceAccounts'] })
+      toast.success('Account deleted')
     },
+    onError: () => toast.error('Failed to delete account'),
   })
 }
 
@@ -58,6 +65,8 @@ export function useSyncSourceAccount() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sourceAccounts'] })
       queryClient.invalidateQueries({ queryKey: ['campaigns'] })
+      toast.success('Sync started')
     },
+    onError: () => toast.error('Sync failed'),
   })
 }

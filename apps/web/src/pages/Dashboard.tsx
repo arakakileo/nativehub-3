@@ -4,6 +4,7 @@ import { MetricCard } from '../components/ui/MetricCard'
 import { DataTable } from '../components/ui/DataTable'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { Button } from '../components/ui/Button'
+import { MetricGridSkeleton } from '../components/ui/Skeleton'
 import { useCampaigns } from '../hooks/useCampaigns'
 import { useSourceAccounts } from '../hooks/useSourceAccounts'
 import { formatCurrency, formatNumber, getSourceColor } from '../lib/utils'
@@ -91,36 +92,40 @@ export function Dashboard() {
       </div>
 
       {/* Metrics Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <MetricCard
-          title="Total Spend"
-          value={metrics.spend}
-          format="currency"
-          icon={DollarSign}
-          iconColor="text-green-600"
-        />
-        <MetricCard
-          title="Total Clicks"
-          value={metrics.clicks}
-          format="number"
-          icon={MousePointer}
-          iconColor="text-blue-600"
-        />
-        <MetricCard
-          title="Impressions"
-          value={metrics.impressions}
-          format="number"
-          icon={Eye}
-          iconColor="text-purple-600"
-        />
-        <MetricCard
-          title="ROI"
-          value={roi}
-          format="percent"
-          icon={TrendingUp}
-          iconColor="text-orange-600"
-        />
-      </div>
+      {campaignsLoading ? (
+        <MetricGridSkeleton />
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <MetricCard
+            title="Total Spend"
+            value={metrics.spend}
+            format="currency"
+            icon={DollarSign}
+            iconColor="text-green-600"
+          />
+          <MetricCard
+            title="Total Clicks"
+            value={metrics.clicks}
+            format="number"
+            icon={MousePointer}
+            iconColor="text-blue-600"
+          />
+          <MetricCard
+            title="Impressions"
+            value={metrics.impressions}
+            format="number"
+            icon={Eye}
+            iconColor="text-purple-600"
+          />
+          <MetricCard
+            title="ROI"
+            value={roi}
+            format="percent"
+            icon={TrendingUp}
+            iconColor="text-orange-600"
+          />
+        </div>
+      )}
 
       {/* Connected Accounts Summary */}
       <motion.div
