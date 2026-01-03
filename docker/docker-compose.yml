@@ -35,7 +35,7 @@ services:
       # Service
       - traefik.http.services.nativehub-api.loadbalancer.server.port=3001
     networks:
-      - traefik
+      - traefik-public
     logging:
       driver: "json-file"
       options:
@@ -66,7 +66,7 @@ services:
       # Service
       - traefik.http.services.nativehub-web.loadbalancer.server.port=80
     networks:
-      - traefik
+      - traefik-public
 
   # Middleware definitions (using dummy container)
   traefik-middleware:
@@ -83,9 +83,9 @@ services:
       - traefik.http.middlewares.security-headers.headers.frameDeny=true
       - traefik.http.middlewares.security-headers.headers.browserXssFilter=true
     networks:
-      - traefik
+      - traefik-public
     restart: unless-stopped
 
 networks:
-  traefik:
+  traefik-public:
     external: true
