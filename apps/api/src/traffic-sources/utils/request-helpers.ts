@@ -34,9 +34,14 @@ export async function makeRequest<T>(
 
 /**
  * Build URL with query parameters
+ * Note: Properly appends path to baseUrl (doesn't replace base path)
  */
 export function buildUrl(baseUrl: string, path: string, params?: Record<string, string | number | undefined>): string {
-  const url = new URL(path, baseUrl)
+  // Remove trailing slash from base and leading slash from path to avoid double slashes
+  const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
+  const cleanPath = path.startsWith('/') ? path.slice(1) : path
+
+  const url = new URL(`${cleanBase}/${cleanPath}`)
 
   if (params) {
     for (const [key, value] of Object.entries(params)) {
