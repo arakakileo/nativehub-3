@@ -7,9 +7,11 @@ import { Button } from '../components/ui/Button'
 import {
   useSourceAccounts,
   useCreateSourceAccount,
+  useTestSourceAccount,
   useDeleteSourceAccount,
   useSyncSourceAccount,
 } from '../hooks/useSourceAccounts'
+import { toast } from 'sonner'
 import { getSourceColor } from '../lib/utils'
 import type { SourceAccount, CreateSourceAccountInput } from '../lib/api'
 
@@ -19,6 +21,7 @@ export function SourceAccounts() {
   const [showModal, setShowModal] = useState(false)
   const { data: accounts = [], isLoading } = useSourceAccounts()
   const createMutation = useCreateSourceAccount()
+  const testMutation = useTestSourceAccount()
   const deleteMutation = useDeleteSourceAccount()
   const syncMutation = useSyncSourceAccount()
 
@@ -61,9 +64,24 @@ export function SourceAccounts() {
       username: form.credentials.username,
       password: form.credentials.password,
     }
-    await createMutation.mutateAsync(payload)
-    setShowModal(false)
-    setForm({ sourceId: 'revcontent', name: '', credentials: {} })
+
+    try {
+      // Step 1: Create account
+      const account = await createMutation.mutateAsync(payload)
+
+      // Step 2: Auto-test connection
+      try {
+        await testMutation.mutateAsync(account.id)
+        toast.success('Account connected successfully')
+      } catch {
+        toast.warning('Account created but connection test failed. Try syncing later.')
+      }
+
+      setShowModal(false)
+      setForm({ sourceId: 'revcontent', name: '', credentials: {} })
+    } catch {
+      // Create failed - error already shown by mutation
+    }
   }
 
   const columns = [
@@ -240,8 +258,16 @@ export function SourceAccounts() {
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" className="flex-1" isLoading={createMutation.isPending}>
-                    Add Account
+                  <Button
+                    type="submit"
+                    className="flex-1"
+                    isLoading={createMutation.isPending || testMutation.isPending}
+                  >
+                    {createMutation.isPending
+                      ? 'Creating...'
+                      : testMutation.isPending
+                        ? 'Testing connection...'
+                        : 'Add Account'}
                   </Button>
                 </div>
               </form>

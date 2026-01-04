@@ -24,7 +24,7 @@ export function useCreateSourceAccount() {
     mutationFn: (data: CreateSourceAccountInput) => api.createSourceAccount(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sourceAccounts'] })
-      toast.success('Account created successfully')
+      // Toast handled by caller after test connection
     },
     onError: () => toast.error('Failed to create account'),
   })
@@ -68,5 +68,17 @@ export function useSyncSourceAccount() {
       toast.success('Sync started')
     },
     onError: () => toast.error('Sync failed'),
+  })
+}
+
+export function useTestSourceAccount() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (id: string) => api.testSourceAccount(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sourceAccounts'] })
+    },
+    // No toast here - caller handles messaging
   })
 }

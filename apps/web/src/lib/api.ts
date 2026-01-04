@@ -77,6 +77,9 @@ class ApiClient {
   syncSourceAccount = (id: string): Promise<{ success: boolean }> =>
     this.request(`/api/v1/source-accounts/${id}/sync`, { method: 'POST' })
 
+  testSourceAccount = (id: string): Promise<{ success: boolean; message?: string }> =>
+    this.request(`/api/v1/source-accounts/${id}/test`, { method: 'POST' })
+
   // Campaigns
   getCampaigns = (sourceAccountId?: string): Promise<Campaign[]> => {
     const query = sourceAccountId ? `?sourceAccountId=${sourceAccountId}` : ''
