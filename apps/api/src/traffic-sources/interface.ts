@@ -10,6 +10,7 @@ export interface TrafficSourceCredentials {
   password?: string
   accessToken?: string
   refreshToken?: string
+  accountId?: string // External account/marketer ID
 }
 
 /**
