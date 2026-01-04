@@ -76,6 +76,37 @@ app.post('/internal/jobs/trigger/:jobName', async (c) => {
   return c.json({ jobId, jobName, status: 'queued' }, 202)
 })
 
+// Internal source account creation for testing (no auth required)
+// TODO: Remove in production
+app.post('/internal/test/source-account', async (c) => {
+  const body = await c.req.json()
+  const { sourceId, name, clientId, accountId, userId } = body
+
+  const { encryptCredentials } = await import('./lib/crypto.js')
+  const { sourceAccounts } = await import('./db/schema.js')
+
+  // Encrypt credentials
+  const { encrypted, iv } = encryptCredentials({ clientId })
+
+  // Calculate token expiry (30 days from now)
+  const tokenExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+
+  // Insert account
+  const [account] = await db.insert(sourceAccounts).values({
+    userId,
+    sourceId,
+    name,
+    credentialsEncrypted: encrypted,
+    credentialsIv: iv,
+    accessToken: clientId, // For pre-obtained tokens, the token IS the clientId
+    tokenExpiresAt,
+    externalAccountId: accountId,
+    status: 'connected',
+  }).returning()
+
+  return c.json({ id: account.id, status: 'connected' }, 201)
+})
+
 // Health check (public) - verifies DB connectivity and respects shutdown state
 app.get('/health', async (c) => {
   if (isShuttingDown) {
