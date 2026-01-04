@@ -63,6 +63,19 @@ app.use('/api/v1/*', apiRateLimiter)
 // Apply session middleware to all API v1 routes (protected)
 app.use('/api/v1/*', sessionMiddleware)
 
+// Internal job trigger for testing (no auth required)
+// TODO: Remove or protect in production
+app.post('/internal/jobs/trigger/:jobName', async (c) => {
+  const jobName = c.req.param('jobName') as 'sync-campaigns' | 'run-optimizer'
+  if (!['sync-campaigns', 'run-optimizer'].includes(jobName)) {
+    return c.json({ error: 'Invalid job name' }, 400)
+  }
+
+  const { triggerJob } = await import('./jobs/index.js')
+  const jobId = await triggerJob(jobName)
+  return c.json({ jobId, jobName, status: 'queued' }, 202)
+})
+
 // Health check (public) - verifies DB connectivity and respects shutdown state
 app.get('/health', async (c) => {
   if (isShuttingDown) {
