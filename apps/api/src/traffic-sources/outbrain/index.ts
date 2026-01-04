@@ -29,6 +29,13 @@ export class OutbrainSource extends BaseTrafficSource {
   private password: string = ''
   private marketerId: string = ''
 
+  // Override to also set marketerId when restoring from cached token
+  override setStoredToken(token: string, expiresAt: Date, externalAccountId?: string): void {
+    super.setStoredToken(token, expiresAt, externalAccountId)
+    this.marketerId = externalAccountId || ''
+    logger.debug({ sourceId: this.sourceId, marketerId: this.marketerId }, 'Restored Outbrain token with marketerId')
+  }
+
   async authenticate(credentials: TrafficSourceCredentials): Promise<AuthResult> {
     // Support pre-obtained OB_TOKEN_V1 (clientId contains token, accountId contains marketer ID)
     if (credentials.clientId && credentials.clientId.length > 100) {

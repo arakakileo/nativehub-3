@@ -72,7 +72,7 @@ export interface TrafficSource {
   isAuthenticated(): boolean
 
   // Token management
-  setStoredToken(token: string, expiresAt: Date): void
+  setStoredToken(token: string, expiresAt: Date, externalAccountId?: string): void
   getStoredToken(): { token: string; expiresAt: Date } | null
 
   // Campaigns
@@ -97,8 +97,8 @@ export abstract class BaseTrafficSource implements TrafficSource {
   protected tokenExpiresAt: number = 0
   protected storedToken: { token: string; expiresAt: Date } | null = null
 
-  // Token management
-  setStoredToken(token: string, expiresAt: Date): void {
+  // Token management - can be overridden by subclasses that need external account ID
+  setStoredToken(token: string, expiresAt: Date, _externalAccountId?: string): void {
     this.storedToken = { token, expiresAt }
     this.accessToken = token
     this.tokenExpiresAt = expiresAt.getTime()

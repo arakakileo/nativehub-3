@@ -22,7 +22,7 @@ export const users = pgTable("users", {
 
 // Better Auth Sessions Table
 export const sessions = pgTable("sessions", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: text("id").primaryKey(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   token: text("token").notNull().unique(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
@@ -66,6 +66,12 @@ export const verifications = pgTable("verifications", {
 }, (table) => ({
   identifierIdx: index("idx_verifications_identifier").on(table.identifier),
 }))
+
+// Better Auth expects singular table names in schema
+export const user = users
+export const session = sessions
+export const account = accounts
+export const verification = verifications
 
 // Type exports
 export type User = typeof users.$inferSelect

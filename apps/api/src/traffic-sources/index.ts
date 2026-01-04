@@ -62,7 +62,7 @@ export async function getAuthenticatedSource(sourceAccountId: string): Promise<T
   // Restore token if valid
   if (account.accessToken && account.tokenExpiresAt) {
     if (account.tokenExpiresAt > new Date()) {
-      source.setStoredToken(account.accessToken, account.tokenExpiresAt)
+      source.setStoredToken(account.accessToken, account.tokenExpiresAt, account.externalAccountId || undefined)
       instances.set(sourceAccountId, source)
       return source
     }

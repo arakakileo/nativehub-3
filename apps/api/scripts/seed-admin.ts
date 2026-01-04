@@ -29,9 +29,17 @@ function generatePassword(): string {
 }
 
 // Hash password using scrypt (Better Auth compatible)
+// Uses same params as Better Auth: N=16384, r=16, p=1, dkLen=64
 async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString("hex")
-  const derivedKey = (await scrypt(password, salt, 64)) as Buffer
+  // Normalize password using NFKC (same as Better Auth)
+  const normalizedPassword = password.normalize("NFKC")
+  // Better Auth scrypt params: N=16384, r=16, p=1, maxmem=128*N*r*2
+  const N = 16384
+  const r = 16
+  const p = 1
+  const maxmem = 128 * N * r * 2
+  const derivedKey = (await scrypt(normalizedPassword, salt, 64, { N, r, p, maxmem })) as Buffer
   return `${salt}:${derivedKey.toString("hex")}`
 }
 

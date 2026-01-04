@@ -2,9 +2,10 @@ import { betterAuth } from "better-auth"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
 import { db } from "./lib/db.js"
 import { trustedOrigins, isProduction, authConfig } from "./lib/config.js"
+import * as schema from "./db/auth-schema.js"
 
 export const auth = betterAuth({
-  database: drizzleAdapter(db, { provider: "pg" }),
+  database: drizzleAdapter(db, { provider: "pg", schema }),
   secret: process.env.BETTER_AUTH_SECRET!,
   baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3001",
   trustedOrigins,

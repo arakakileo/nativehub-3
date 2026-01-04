@@ -74,7 +74,7 @@ services:
         - traefik.http.routers.nativehub3-web-http.entrypoints=web
         - traefik.http.routers.nativehub3-web-http.middlewares=redirect-to-https@docker
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/nginx-health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/nginx-health"]
       interval: 15s
       timeout: 5s
       retries: 3
