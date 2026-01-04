@@ -42,6 +42,7 @@ services:
     networks:
       - traefik-public
       - monitoring
+      - supabase-nativehub
     logging:
       driver: "json-file"
       options:
@@ -176,6 +177,9 @@ networks:
     external: true
   monitoring:
     driver: overlay
+  supabase-nativehub:
+    external: true
+    name: supabase-nativehub_default
 
 volumes:
   prometheus-data:
