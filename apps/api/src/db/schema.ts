@@ -18,20 +18,17 @@ export * from './auth-schema.js'
 import { users } from './auth-schema.js'
 
 // Custom bytea type for binary data (encrypted credentials)
+// postgres-js handles Buffer directly - no need for hex encoding
 const bytea = customType<{ data: Buffer; notNull: true; default: false }>({
   dataType() {
     return 'bytea'
   },
-  toDriver(value: Buffer): string {
-    return `\\x${value.toString('hex')}`
+  toDriver(value: Buffer): Buffer {
+    return value
   },
   fromDriver(value: unknown): Buffer {
     if (Buffer.isBuffer(value)) return value
-    if (typeof value === 'string') {
-      // Handle hex format from Postgres
-      const hex = value.startsWith('\\x') ? value.slice(2) : value
-      return Buffer.from(hex, 'hex')
-    }
+    if (value instanceof Uint8Array) return Buffer.from(value)
     throw new Error(`Invalid bytea value: ${typeof value}`)
   },
 })
