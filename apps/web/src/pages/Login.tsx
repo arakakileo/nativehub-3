@@ -1,17 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { LogIn, UserPlus, AlertCircle } from 'lucide-react'
+import { LogIn, AlertCircle } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { useAuthStore } from '../stores/authStore'
 
 export function Login() {
   const navigate = useNavigate()
-  const { login, signup, checkSession, isLoading, isAuthenticated, error, clearError } = useAuthStore()
+  const { login, checkSession, isLoading, isAuthenticated, error, clearError } = useAuthStore()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [name, setName] = useState('')
-  const [isSignup, setIsSignup] = useState(false)
 
   // Check session on mount
   useEffect(() => {
@@ -28,20 +26,11 @@ export function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      if (isSignup) {
-        await signup(email, password, name)
-      } else {
-        await login(email, password)
-      }
+      await login(email, password)
       navigate('/')
     } catch {
       // Error is handled by store
     }
-  }
-
-  const toggleMode = () => {
-    setIsSignup(!isSignup)
-    clearError()
   }
 
   return (
@@ -83,19 +72,6 @@ export function Login() {
               </motion.div>
             )}
 
-            {isSignup && (
-              <div>
-                <label className="mb-1 block text-sm font-medium">Name</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Your name"
-                  className="w-full rounded-lg border bg-background px-3 py-2 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </div>
-            )}
-
             <div>
               <label className="mb-1 block text-sm font-medium">Email</label>
               <input
@@ -119,39 +95,13 @@ export function Login() {
                 required
                 minLength={8}
               />
-              {isSignup && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Minimum 8 characters
-                </p>
-              )}
             </div>
 
             <Button type="submit" className="w-full" isLoading={isLoading}>
-              {isSignup ? (
-                <>
-                  <UserPlus className="h-4 w-4" />
-                  Create Account
-                </>
-              ) : (
-                <>
-                  <LogIn className="h-4 w-4" />
-                  Sign In
-                </>
-              )}
+              <LogIn className="h-4 w-4" />
+              Sign In
             </Button>
           </form>
-
-          <div className="mt-4 text-center">
-            <button
-              type="button"
-              onClick={toggleMode}
-              className="text-sm text-muted-foreground hover:text-primary"
-            >
-              {isSignup
-                ? 'Already have an account? Sign in'
-                : "Don't have an account? Sign up"}
-            </button>
-          </div>
         </div>
 
         {/* Footer */}

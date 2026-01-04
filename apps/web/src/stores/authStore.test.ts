@@ -4,7 +4,6 @@ import { useAuthStore } from './authStore'
 
 // Mock the auth-client module
 const mockSignIn = vi.fn()
-const mockSignUp = vi.fn()
 const mockSignOut = vi.fn()
 const mockGetSession = vi.fn()
 
@@ -12,9 +11,6 @@ vi.mock('../lib/auth-client', () => ({
   authClient: {
     signIn: {
       email: (...args: unknown[]) => mockSignIn(...args),
-    },
-    signUp: {
-      email: (...args: unknown[]) => mockSignUp(...args),
     },
     signOut: () => mockSignOut(),
     getSession: () => mockGetSession(),
@@ -133,68 +129,6 @@ describe('authStore', () => {
       })
 
       expect(result.current.error).toBeNull()
-    })
-  })
-
-  describe('signup', () => {
-    it('should set user on successful signup', async () => {
-      const mockUser = {
-        id: 'user-456',
-        email: 'new@example.com',
-        name: 'New User',
-      }
-
-      mockSignUp.mockResolvedValue({
-        data: { user: mockUser },
-        error: null,
-      })
-
-      const { result } = renderHook(() => useAuthStore())
-
-      await act(async () => {
-        await result.current.signup('new@example.com', 'password123', 'New User')
-      })
-
-      expect(result.current.user).toEqual(mockUser)
-      expect(result.current.isAuthenticated).toBe(true)
-    })
-
-    it('should use email prefix as name if not provided', async () => {
-      mockSignUp.mockResolvedValue({
-        data: { user: { id: '1' } },
-        error: null,
-      })
-
-      const { result } = renderHook(() => useAuthStore())
-
-      await act(async () => {
-        await result.current.signup('john.doe@example.com', 'password123')
-      })
-
-      expect(mockSignUp).toHaveBeenCalledWith({
-        email: 'john.doe@example.com',
-        password: 'password123',
-        name: 'john.doe',
-      })
-    })
-
-    it('should set error on failed signup', async () => {
-      mockSignUp.mockResolvedValue({
-        data: null,
-        error: { message: 'Email already exists' },
-      })
-
-      const { result } = renderHook(() => useAuthStore())
-
-      await act(async () => {
-        try {
-          await result.current.signup('existing@example.com', 'password')
-        } catch {
-          // Expected to throw
-        }
-      })
-
-      expect(result.current.error).toBe('Email already exists')
     })
   })
 

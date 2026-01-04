@@ -11,6 +11,7 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     minPasswordLength: authConfig.minPasswordLength,
+    disableSignUp: true, // Only pre-seeded users can login
   },
   session: {
     expiresIn: 60 * 60 * 24 * authConfig.sessionExpiryDays,

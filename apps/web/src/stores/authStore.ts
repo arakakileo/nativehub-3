@@ -15,7 +15,6 @@ interface AuthState {
   error: string | null
 
   login: (email: string, password: string) => Promise<void>
-  signup: (email: string, password: string, name?: string) => Promise<void>
   logout: () => Promise<void>
   checkSession: () => Promise<void>
   clearError: () => void
@@ -47,35 +46,6 @@ export const useAuthStore = create<AuthState>()((set) => ({
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Login failed'
-      set({
-        error: message,
-        isLoading: false,
-      })
-      throw error
-    }
-  },
-
-  signup: async (email, password, name) => {
-    set({ isLoading: true, error: null })
-
-    try {
-      const result = await authClient.signUp.email({
-        email,
-        password,
-        name: name || email.split('@')[0],
-      })
-
-      if (result.error) {
-        throw new Error(result.error.message || 'Signup failed')
-      }
-
-      set({
-        user: result.data?.user as User,
-        isAuthenticated: true,
-        isLoading: false,
-      })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Signup failed'
       set({
         error: message,
         isLoading: false,
