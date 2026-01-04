@@ -1,10 +1,6 @@
 services:
   api:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.api
-    ports:
-      - "3002:3001"
+    image: nativehub3-api:latest
     environment:
       - NODE_ENV=production
       - DATABASE_URL=${DATABASE_URL}
@@ -21,6 +17,17 @@ services:
       start_period: 30s
     networks:
       - nativehub-db
+      - traefik-public
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.nativehub3-api.rule=Host(`api-nativehub.arakakileo.com`)
+      - traefik.http.routers.nativehub3-api.entrypoints=websecure
+      - traefik.http.routers.nativehub3-api.tls=true
+      - traefik.http.routers.nativehub3-api.tls.certresolver=letsencrypt
+      - traefik.http.services.nativehub3-api.loadbalancer.server.port=3001
+      - traefik.http.routers.nativehub3-api-http.rule=Host(`api-nativehub.arakakileo.com`)
+      - traefik.http.routers.nativehub3-api-http.entrypoints=web
+      - traefik.http.routers.nativehub3-api-http.middlewares=redirect-to-https@docker
     logging:
       driver: "json-file"
       options:
@@ -28,23 +35,35 @@ services:
         max-file: "3"
 
   web:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.web
-    ports:
-      - "8081:80"
-    depends_on:
-      api:
-        condition: service_healthy
+    image: nativehub3-web:latest
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost/nginx-health || exit 1"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/nginx-health"]
       interval: 15s
       timeout: 5s
       retries: 3
       start_period: 10s
+    networks:
+      - traefik-public
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.nativehub3-web.rule=Host(`nativehub.arakakileo.com`)
+      - traefik.http.routers.nativehub3-web.entrypoints=websecure
+      - traefik.http.routers.nativehub3-web.tls=true
+      - traefik.http.routers.nativehub3-web.tls.certresolver=letsencrypt
+      - traefik.http.services.nativehub3-web.loadbalancer.server.port=80
+      - traefik.http.routers.nativehub3-web-http.rule=Host(`nativehub.arakakileo.com`)
+      - traefik.http.routers.nativehub3-web-http.entrypoints=web
+      - traefik.http.routers.nativehub3-web-http.middlewares=redirect-to-https@docker
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   nativehub-db:
     external: true
     name: nativehub-supabase_nativehub-supabase-internal
+  traefik-public:
+    external: true
