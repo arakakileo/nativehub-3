@@ -1,11 +1,11 @@
 ---
-title: "NativeHub 3.0 Phases 7-10: Job Queue, Deploy, Frontend, UAT"
-description: "Upgrade job queue to pg-boss, deploy to VPS with Traefik, build production-ready dashboard, UAT & performance audit"
-status: in-progress (Phases 7-10 completed, Phase 11+ pending)
+title: "NativeHub 3.0 Phases 7-11: Job Queue, Deploy, Frontend, UAT, Monitoring"
+description: "Upgrade job queue to pg-boss, deploy to VPS with Traefik, build production-ready dashboard, UAT & performance audit, production monitoring setup"
+status: in-progress (Phases 7-11 completed, Phase 12+ pending)
 priority: P1
-effort: 17h
+effort: 21h
 branch: main
-tags: [pg-boss, docker, traefik, react, deployment, testing, performance]
+tags: [pg-boss, docker, traefik, react, deployment, testing, performance, monitoring, prometheus, grafana]
 created: 2026-01-03
 ---
 
@@ -23,6 +23,7 @@ Complete production deployment pipeline: Replace node-cron with pg-boss for pers
 | 8 | Production Deploy | P1 | 3h | completed | [phase-08-production-deploy.md](./phase-08-production-deploy.md) |
 | 9 | Frontend Dashboard | P2 | 8h | completed | [phase-09-frontend-dashboard.md](./phase-09-frontend-dashboard.md) |
 | 10 | UAT & Performance Audit | P1 | 4h | completed | [phase-10-uat-performance.md](./phase-10-uat-performance.md) |
+| 11 | Production Monitoring & Alerting | P1 | 4h | completed | [phase-11-production-monitoring.md](./phase-11-production-monitoring.md) |
 
 ## Dependencies
 

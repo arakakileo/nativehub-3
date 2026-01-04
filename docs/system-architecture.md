@@ -856,28 +856,162 @@ LOG_LEVEL=info
 
 ## Monitoring & Observability
 
+### Phase 11: Production Monitoring Stack
+
+**Status**: Complete - Fully integrated
+
+#### Prometheus Metrics Collection
+
+Comprehensive metrics via prom-client library:
+
+**HTTP Metrics** (collected by metricsMiddleware):
+- `nativehub_http_request_duration_seconds` - Histogram (p50, p95, p99 latency)
+  - Labels: method, route (normalized), status_code
+  - Buckets: 0.01s → 10s
+- `nativehub_http_requests_total` - Counter (request throughput)
+- `nativehub_http_errors_total` - Counter (4xx, 5xx, unhandled)
+- `nativehub_http_active_requests` - Gauge (concurrent requests)
+
+**Database Metrics** (ready for instrumentation):
+- `nativehub_db_query_duration_seconds` - Histogram
+  - Labels: operation, table
+  - Buckets: 0.001s → 1s
+
+**Job Queue Metrics**:
+- `nativehub_jobs_processed_total` - Counter (job_name, status)
+- `nativehub_job_duration_seconds` - Histogram (job execution time)
+
+**System Metrics** (auto-collected):
+- `nativehub_nodejs_heap_size_*` - Memory usage
+- `nativehub_nodejs_gc_*` - Garbage collection events
+- `nativehub_nodejs_eventloop_*` - Event loop lag
+- `nativehub_app_info` - Version info
+
+**Metrics Endpoint**: `GET /metrics` (port 3001)
+- Returns Prometheus-format text
+- Excludes itself to prevent recursion
+- Route normalization prevents cardinality explosion
+
+#### Prometheus Configuration
+
+```yaml
+# Scrape interval: 15 seconds
+# Retention: 15 days
+# Targets: api:3001/metrics, prometheus:9090 (self), traefik:8080
+
+scrape_configs:
+  - job_name: 'nativehub-api'
+    metrics_path: /metrics
+    scrape_interval: 15s
+    scrape_timeout: 10s
+```
+
+#### Alert Rules (7 configured)
+
+| Rule | Threshold | Severity | Wait | Repeat |
+|------|-----------|----------|------|--------|
+| HighErrorRate | >5% (5m window) | Critical | 2m | 1h |
+| HighLatency | p95 > 1s | Warning | 2m | 4h |
+| NativeHubApiDown | Unreachable > 1m | Critical | 1m | 1h |
+| HighMemoryUsage | Heap > 80% (5m) | Warning | 5m | 4h |
+| TooManyActiveRequests | >100 concurrent | Warning | 1m | 4h |
+| SlowDatabaseQueries | p95 > 0.5s (5m) | Warning | 5m | 4h |
+| JobProcessingFailures | Fail rate > 0.1/sec | Warning | 5m | 4h |
+
+**Inhibition Rules**:
+- When NativeHubApiDown fires, suppress HighErrorRate, HighLatency (prevents cascade)
+
+#### AlertManager Setup
+
+Discord webhook integration for instant notifications:
+
+```yaml
+receivers:
+  - name: 'discord-critical'      # 10s delay, 1h repeat
+    webhook_configs:
+      - url: ${DISCORD_WEBHOOK_URL}
+
+  - name: 'discord-notifications' # 1m delay, 4h repeat
+    webhook_configs:
+      - url: ${DISCORD_WEBHOOK_URL}
+
+route:
+  group_by: ['alertname', 'severity']
+  group_wait: 30s (default)
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - severity: critical → discord-critical
+    - severity: warning → discord-notifications
+```
+
+#### Grafana Dashboards
+
+**Dashboard**: nativehub-overview.json
+- p50/p95/p99 latency trends (5m rolling average)
+- Request rate and error rate breakdown
+- HTTP status code distribution
+- Active requests gauge with threshold
+- Memory and GC metrics
+- Database query performance
+
+**Access**: https://grafana-nativehub.arakakileo.com
+**Provisioning**: Auto-configured from docker/grafana/provisioning/
+**Datasource**: Prometheus (http://prometheus:9090)
+
+#### Architecture Diagram
+
+```
+API Server (Port 3001)
+    │
+    ├─→ [metricsMiddleware] - Timing/counting
+    │   │
+    │   └─→ Request processing
+    │
+    └─→ GET /metrics
+         │
+         └─→ [Prometheus Client] - Format metrics
+             │
+             └─→ [Prometheus Scraper] (15s interval)
+                 │
+                 ├─→ [Prometheus TSDB]
+                 │   └─→ 15-day retention
+                 │
+                 ├─→ [Alert Rules Evaluation] (15s)
+                 │   └─→ Fire → [AlertManager]
+                 │
+                 └─→ [AlertManager]
+                     │
+                     ├─→ Group by severity
+                     ├─→ Route to Discord webhook
+                     └─→ Resolve when condition clears
+
+Grafana Dashboard
+    │
+    └─→ Queries [Prometheus] for visualization
+```
+
 ### Metrics to Track
 
 1. **Performance**:
-   - API response time (p50, p95, p99)
-   - Database query time
-   - Sync job duration
-   - Optimization run duration
+   - API response time (p50, p95, p99) ✓ Phase 11
+   - Database query time (ready for instrumentation)
+   - Sync job duration (ready for job metrics)
+   - Optimization run duration (ready for job metrics)
    - Lighthouse scores (continuous monitoring)
-   - Real User Monitoring (RUM) - Phase 11
 
 2. **Reliability**:
-   - API error rate (4xx, 5xx)
-   - Sync success/failure rate
+   - API error rate (4xx, 5xx) ✓ Phase 11
+   - Sync success/failure rate (ready for job metrics)
    - Database connection pool utilization
-   - Background job execution success rate
+   - Background job execution success rate (ready for job metrics)
    - E2E test pass rate
 
 3. **Business**:
-   - Active users
-   - Campaigns managed
-   - Optimizations executed
-   - Blacklisted widgets
+   - Active users (ready for custom metrics)
+   - Campaigns managed (ready for custom metrics)
+   - Optimizations executed (ready for custom metrics)
+   - Blacklisted widgets (ready for custom metrics)
 
 ### Logging
 
@@ -899,15 +1033,20 @@ logger.error({
 
 ### Error Tracking
 
-1. **Sentry Integration** (future):
-   - Capture unhandled errors
-   - Track error trends
-   - Alert on critical errors
+1. **Prometheus Alerts** (Phase 11):
+   - Immediate notification for critical issues
+   - Discord integration for team awareness
+   - Inhibition rules prevent alert spam
 
 2. **Application Logs**:
    - All errors logged with context
    - Requests tracked with ID
    - Easy debugging with structured logs
+
+3. **Future Enhancements**:
+   - Sentry integration for error grouping
+   - Distributed tracing (request correlation)
+   - SLI/SLO tracking
 
 ## Testing Architecture
 

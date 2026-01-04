@@ -1,8 +1,8 @@
 # NativeHub 3.0 - Codebase Summary
 
-**Generated**: January 3, 2026 (Updated for Phase 10)
-**Total Files**: 170
-**Total Tokens**: ~240K
+**Generated**: January 3, 2026 (Updated for Phase 11)
+**Total Files**: 176+ (+ monitoring configs)
+**Total Tokens**: ~250K
 **Repository**: GitHub (Private)
 
 ---
@@ -108,13 +108,24 @@ nativehub-3/
 │   │   └── package.json
 │   └── ui/                            # Shared UI components (Shadcn/UI)
 ├── docker/                            # Docker configurations
+│   ├── prometheus/                    # Prometheus monitoring (Phase 11)
+│   │   ├── prometheus.yml             # Metrics scrape config
+│   │   └── alert-rules.yml            # 7 alert rules
+│   ├── alertmanager/                  # AlertManager (Phase 11)
+│   │   └── alertmanager.yml           # Discord notifications
+│   ├── grafana/                       # Grafana dashboards (Phase 11)
+│   │   ├── provisioning/              # Datasource & dashboard provisioning
+│   │   └── dashboards/
+│   │       └── nativehub-overview.json # Main monitoring dashboard
+│   └── docker-stack.yml               # Compose config (+ monitoring services)
 ├── docs/                              # Documentation
 │   ├── project-overview-pdr.md        # Project goals & requirements
 │   ├── api-docs.md                    # API endpoint documentation
-│   ├── system-architecture.md         # System design overview
+│   ├── system-architecture.md         # System design overview (+ Phase 11 monitoring)
 │   ├── code-standards.md              # Code guidelines
 │   ├── testing-guide.md               # Testing approach
 │   ├── deployment-guide.md            # Deployment instructions
+│   ├── PHASE-11-SUMMARY.md            # Phase 11 implementation details
 │   └── codebase-summary.md            # THIS FILE
 ├── plans/                             # Development plans & reports
 └── README.md                          # Project root README
@@ -589,6 +600,78 @@ sourceAccountRoutes
 
 ---
 
+## Recent Changes (Phase 11 - Production Monitoring & Alerting)
+
+### New Files - Phase 11
+
+**Monitoring Stack**:
+1. `/apps/api/src/lib/metrics.ts` - Prometheus metrics registry
+2. `/apps/api/src/middleware/metrics.ts` - Request timing middleware
+3. `/docker/prometheus/prometheus.yml` - Prometheus scrape config
+4. `/docker/prometheus/alert-rules.yml` - 7 alert rules
+5. `/docker/alertmanager/alertmanager.yml` - Discord notifications
+6. `/docker/grafana/provisioning/datasources/prometheus.yml` - Auto-config
+7. `/docker/grafana/provisioning/dashboards/dashboard.yml` - Dashboard provisioning
+8. `/docker/grafana/dashboards/nativehub-overview.json` - Main monitoring dashboard
+
+### Metrics Implemented
+
+**HTTP Request Metrics**:
+- `nativehub_http_request_duration_seconds` - Histogram (9 buckets: 0.01-10s)
+- `nativehub_http_requests_total` - Counter (method, route, status)
+- `nativehub_http_errors_total` - Counter (method, route, error_type)
+- `nativehub_http_active_requests` - Gauge (current in-flight)
+
+**Job Queue Metrics**:
+- `nativehub_jobs_processed_total` - Counter (job_name, status)
+- `nativehub_job_duration_seconds` - Histogram (8 buckets: 0.1-120s)
+
+**System Metrics**:
+- `nativehub_nodejs_heap_size_*` - Memory usage
+- `nativehub_nodejs_gc_*` - GC events
+- `nativehub_nodejs_eventloop_*` - Event loop lag
+- `nativehub_app_info` - Version info
+
+### Alert Rules (7 configured)
+
+1. **HighErrorRate** - Error rate >5% (5m) - Critical
+2. **HighLatency** - p95 latency >1s - Warning
+3. **NativeHubApiDown** - Service unreachable >1m - Critical
+4. **HighMemoryUsage** - Heap >80% for 5m - Warning
+5. **TooManyActiveRequests** - Active requests >100 for 1m - Warning
+6. **SlowDatabaseQueries** - p95 DB latency >0.5s for 5m - Warning
+7. **JobProcessingFailures** - Job failure rate >0.1/sec (15m) - Warning
+
+### Updated Files - Phase 11
+1. `/apps/api/src/index.ts` - Added /metrics endpoint
+2. `/apps/api/package.json` - Added prom-client dependency
+3. `/docker/docker-stack.yml` - Added monitoring services (prometheus, alertmanager, grafana)
+4. `/docker/.env.production.example` - Added DISCORD_WEBHOOK_URL
+5. `/docs/codebase-summary.md` - Updated project structure
+6. `/docs/system-architecture.md` - Added monitoring section
+7. `/docs/PHASE-11-SUMMARY.md` - Phase 11 completion report
+
+### Monitoring URLs
+
+| Service | URL | Purpose |
+|---------|-----|---------|
+| API Metrics | http://api:3001/metrics | Prometheus scrape target |
+| Prometheus | http://prometheus:9090 | Metric database (internal) |
+| AlertManager | http://alertmanager:9093 | Alert routing (internal) |
+| Grafana | https://grafana-nativehub.arakakileo.com | Dashboards |
+
+### Features
+
+- **High-resolution timing**: performance.now() for sub-ms precision
+- **Low cardinality**: Route normalization prevents metric explosion
+- **Self-protection**: /metrics endpoint skipped to prevent recursion
+- **Error tracking**: Captures 4xx, 5xx, and unhandled errors
+- **Inhibition rules**: Suppresses cascading alerts when service down
+- **Discord integration**: Instant notifications for critical issues
+- **Grafana dashboards**: Auto-provisioned overview dashboards
+
+---
+
 ## Recent Changes (Phase 10 - E2E Testing & Performance)
 
 ### New Files - Phase 10
@@ -611,15 +694,9 @@ sourceAccountRoutes
 - **Skipped**: 1 (auth mock required)
 - **Success Rate**: 85.7%
 
-### Updated Files - Phase 10
-1. `/apps/web/package.json` - Added test:e2e scripts
-2. `/docs/codebase-summary.md` - Added E2E info
-3. `/docs/system-architecture.md` - Added E2E architecture
-4. `/docs/PHASE-10-SUMMARY.md` - Phase 10 completion report
-
 ---
 
-## Next Steps (Phase 11+)
+## Next Steps (Phase 12+)
 
 - [ ] Enhanced E2E coverage (authenticated flows)
 - [ ] Real User Monitoring (RUM) setup

@@ -7,6 +7,8 @@ import { trustedOrigins } from './lib/config.js'
 import { errorHandler } from './middleware/error-handler.js'
 import { sessionMiddleware } from './middleware/session.js'
 import { authRateLimiter, apiRateLimiter } from './middleware/rate-limit.js'
+import { metricsMiddleware } from './middleware/metrics.js'
+import { getMetrics, getMetricsContentType } from './lib/metrics.js'
 import { authRoutes } from './routes/auth.js'
 import { sourceAccountRoutes } from './routes/source-accounts.js'
 import { campaignRoutes } from './routes/campaigns.js'
@@ -22,9 +24,18 @@ const app = new Hono()
 // Graceful shutdown state
 let isShuttingDown = false
 
-// Global middleware - logger and error handler
+// Global middleware - metrics, logger and error handler
+app.use('*', metricsMiddleware)
 app.use('*', honoLogger())
 app.onError(errorHandler)
+
+// Prometheus metrics endpoint (internal only, no auth required)
+app.get('/metrics', async (c) => {
+  const metrics = await getMetrics()
+  return c.text(metrics, 200, {
+    'Content-Type': getMetricsContentType(),
+  })
+})
 
 // CORS for auth routes (must be before auth handler)
 app.use('/api/auth/*', cors({
