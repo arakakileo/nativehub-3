@@ -30,14 +30,30 @@ export class OutbrainSource extends BaseTrafficSource {
   private marketerId: string = ''
 
   async authenticate(credentials: TrafficSourceCredentials): Promise<AuthResult> {
+    // Support pre-obtained OB_TOKEN_V1 (clientId contains token, accountId contains marketer ID)
+    if (credentials.clientId && credentials.clientId.length > 100) {
+      // This looks like a pre-obtained OB_TOKEN_V1 (they're typically 500+ chars)
+      this.accessToken = credentials.clientId
+      this.marketerId = credentials.accountId || ''
+      // Assume token is valid for 30 days from now
+      this.tokenExpiresAt = Date.now() + (config.tokenValidityDays * 24 * 60 * 60 * 1000)
+
+      logger.info({ sourceId: this.sourceId, marketerId: this.marketerId }, 'Using pre-obtained Outbrain token')
+
+      return {
+        accessToken: this.accessToken,
+        expiresIn: config.tokenValidityDays * 24 * 60 * 60,
+      }
+    }
+
+    // Traditional username/password auth
     if (!credentials.username || !credentials.password) {
-      throw new Error('Outbrain requires username and password')
+      throw new Error('Outbrain requires username and password, or a pre-obtained OB_TOKEN_V1')
     }
 
     this.username = credentials.username
     this.password = credentials.password
-    // accessToken field is used to pass marketer ID
-    this.marketerId = credentials.accessToken || ''
+    this.marketerId = credentials.accountId || ''
 
     return withRetry(async () => {
       await this.rateLimiter.acquire()
@@ -70,11 +86,19 @@ export class OutbrainSource extends BaseTrafficSource {
   }
 
   async refreshAuth(): Promise<AuthResult> {
-    return this.authenticate({
-      username: this.username,
-      password: this.password,
-      accessToken: this.marketerId,
-    })
+    // If we have username/password, use traditional auth refresh
+    if (this.username && this.password) {
+      return this.authenticate({
+        username: this.username,
+        password: this.password,
+        accountId: this.marketerId,
+      })
+    }
+    // For pre-obtained tokens, just return current state (can't refresh without credentials)
+    return {
+      accessToken: this.accessToken || '',
+      expiresIn: config.tokenValidityDays * 24 * 60 * 60,
+    }
   }
 
   async getCampaigns(options: ListCampaignsOptions = {}): Promise<NormalizedCampaign[]> {
@@ -235,7 +259,11 @@ export class OutbrainSource extends BaseTrafficSource {
     const refreshBuffer = 24 * 60 * 60 // 1 day buffer
     if (!this.isAuthenticated() || this.isTokenExpiringSoon(refreshBuffer)) {
       if (this.username && this.password) {
+        // Traditional auth - can refresh
         await this.refreshAuth()
+      } else if (this.accessToken) {
+        // Pre-obtained token - assume it's still valid
+        logger.debug({ sourceId: this.sourceId }, 'Using pre-obtained token without refresh')
       } else {
         throw new Error('Not authenticated')
       }
