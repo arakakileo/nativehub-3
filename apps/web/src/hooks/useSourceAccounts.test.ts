@@ -150,7 +150,8 @@ describe('useSourceAccounts', () => {
       const newAccount = {
         sourceId: 'revcontent' as const,
         name: 'New Account',
-        credentials: { clientId: 'test', clientSecret: 'secret' },
+        clientId: 'test',
+        clientSecret: 'secret',
       }
       const createdAccount = { id: 'new-id', ...newAccount, status: 'pending' }
 
@@ -189,7 +190,7 @@ describe('useSourceAccounts', () => {
         result.current.mutateAsync({
           sourceId: 'revcontent',
           name: '',
-          credentials: {},
+          clientId: '',
         })
       ).rejects.toThrow('Invalid data')
     })

@@ -149,7 +149,11 @@ export interface SourceAccount {
 export interface CreateSourceAccountInput {
   sourceId: 'revcontent' | 'taboola' | 'outbrain' | 'mgid'
   name: string
-  credentials: Record<string, string>
+  clientId: string
+  clientSecret?: string
+  accountId?: string
+  username?: string
+  password?: string
 }
 
 export interface Campaign {

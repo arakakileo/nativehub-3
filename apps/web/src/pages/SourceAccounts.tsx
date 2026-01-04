@@ -11,7 +11,7 @@ import {
   useSyncSourceAccount,
 } from '../hooks/useSourceAccounts'
 import { getSourceColor } from '../lib/utils'
-import type { SourceAccount } from '../lib/api'
+import type { SourceAccount, CreateSourceAccountInput } from '../lib/api'
 
 const SOURCES = ['revcontent', 'taboola', 'outbrain', 'mgid'] as const
 
@@ -28,16 +28,40 @@ export function SourceAccounts() {
     credentials: {} as Record<string, string>,
   })
 
-  const credentialFields: Record<string, string[]> = {
-    revcontent: ['clientId', 'clientSecret'],
-    taboola: ['clientId', 'clientSecret', 'accountId'],
-    outbrain: ['accessToken', 'accountId'],
-    mgid: ['clientId', 'token'],
+  // Field display names and their API mapping
+  const credentialFields: Record<string, { display: string; apiField: string }[]> = {
+    revcontent: [
+      { display: 'Client ID', apiField: 'clientId' },
+      { display: 'Client Secret', apiField: 'clientSecret' },
+    ],
+    taboola: [
+      { display: 'Client ID', apiField: 'clientId' },
+      { display: 'Client Secret', apiField: 'clientSecret' },
+      { display: 'Account ID', apiField: 'accountId' },
+    ],
+    outbrain: [
+      { display: 'OB Token (Access Token)', apiField: 'clientId' }, // Outbrain uses clientId for pre-obtained token
+      { display: 'Marketer ID', apiField: 'accountId' },
+    ],
+    mgid: [
+      { display: 'Client ID', apiField: 'clientId' },
+      { display: 'Token', apiField: 'clientSecret' }, // MGID token maps to clientSecret
+    ],
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    await createMutation.mutateAsync(form)
+    // Flatten credentials into the request body (API expects flat structure)
+    const payload: CreateSourceAccountInput = {
+      sourceId: form.sourceId,
+      name: form.name,
+      clientId: form.credentials.clientId || '',
+      clientSecret: form.credentials.clientSecret,
+      accountId: form.credentials.accountId,
+      username: form.credentials.username,
+      password: form.credentials.password,
+    }
+    await createMutation.mutateAsync(payload)
     setShowModal(false)
     setForm({ sourceId: 'revcontent', name: '', credentials: {} })
   }
@@ -188,17 +212,17 @@ export function SourceAccounts() {
                 </div>
 
                 {credentialFields[form.sourceId].map((field) => (
-                  <div key={field}>
-                    <label className="mb-1 block text-sm font-medium capitalize">
-                      {field.replace(/([A-Z])/g, ' $1').trim()}
+                  <div key={field.apiField}>
+                    <label className="mb-1 block text-sm font-medium">
+                      {field.display}
                     </label>
                     <input
                       type="password"
-                      value={form.credentials[field] || ''}
+                      value={form.credentials[field.apiField] || ''}
                       onChange={(e) =>
                         setForm({
                           ...form,
-                          credentials: { ...form.credentials, [field]: e.target.value },
+                          credentials: { ...form.credentials, [field.apiField]: e.target.value },
                         })
                       }
                       className="w-full rounded-lg border bg-background px-3 py-2"
