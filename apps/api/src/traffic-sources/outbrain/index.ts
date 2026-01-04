@@ -114,11 +114,15 @@ export class OutbrainSource extends BaseTrafficSource {
     return withRetry(async () => {
       await this.rateLimiter.acquire()
 
+      const url = buildUrl(config.baseUrl, `/marketers/${this.marketerId}/campaigns`, {
+        offset: options.page ? (options.page - 1) * (options.perPage || 100) : 0,
+        limit: options.perPage || 100,
+      })
+
+      logger.debug({ url, marketerId: this.marketerId }, 'Outbrain getCampaigns request')
+
       const response = await makeRequest<{ campaigns: OutbrainCampaign[] }>(
-        buildUrl(config.baseUrl, `/marketers/${this.marketerId}/campaigns`, {
-          offset: options.page ? (options.page - 1) * (options.perPage || 100) : 0,
-          limit: options.perPage || 100,
-        }),
+        url,
         {
           headers: {
             'OB-TOKEN-V1': this.accessToken!,
