@@ -81,7 +81,7 @@ export async function getAuthenticatedSource(sourceAccountId: string): Promise<T
     clientSecret: credentials.clientSecret,
     username: credentials.username,
     password: credentials.password,
-    accessToken: account.externalAccountId || undefined,
+    accountId: account.externalAccountId || undefined,
   })
 
   // Update DB with new token
