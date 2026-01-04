@@ -20,11 +20,11 @@ export class CampaignSyncService {
   async syncAll(): Promise<SyncResult> {
     const result: SyncResult = { synced: 0, failed: 0, details: [] }
 
-    // Get all active source accounts
+    // Get all connected source accounts
     const accounts = await db
       .select()
       .from(sourceAccounts)
-      .where(eq(sourceAccounts.status, "active"))
+      .where(eq(sourceAccounts.status, "connected"))
 
     logger.info(`Starting campaign sync for ${accounts.length} accounts`)
 
