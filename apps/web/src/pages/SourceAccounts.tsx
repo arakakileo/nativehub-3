@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, RefreshCw, Trash2, X } from 'lucide-react'
+import { Plus, RefreshCw, Trash2, X, Plug } from 'lucide-react'
 import { DataTable } from '../components/ui/DataTable'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { Button } from '../components/ui/Button'
@@ -84,6 +84,15 @@ export function SourceAccounts() {
     }
   }
 
+  const handleTestConnection = async (accountId: string) => {
+    try {
+      await testMutation.mutateAsync(accountId)
+      toast.success('Connection successful!')
+    } catch {
+      toast.error('Connection test failed')
+    }
+  }
+
   const columns = [
     {
       key: 'name',
@@ -118,14 +127,30 @@ export function SourceAccounts() {
       header: '',
       render: (acc: SourceAccount) => (
         <div className="flex items-center justify-end gap-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => syncMutation.mutate(acc.id)}
-            disabled={syncMutation.isPending}
-          >
-            <RefreshCw className={`h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
-          </Button>
+          {/* Test Connection button for pending accounts */}
+          {acc.status === 'pending' && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => handleTestConnection(acc.id)}
+              disabled={testMutation.isPending}
+              title="Test Connection"
+            >
+              <Plug className={`h-4 w-4 ${testMutation.isPending ? 'animate-pulse' : ''}`} />
+            </Button>
+          )}
+          {/* Sync button for connected accounts */}
+          {acc.status === 'connected' && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => syncMutation.mutate(acc.id)}
+              disabled={syncMutation.isPending}
+              title="Sync Campaigns"
+            >
+              <RefreshCw className={`h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
+            </Button>
+          )}
           <Button
             size="sm"
             variant="ghost"
@@ -135,6 +160,7 @@ export function SourceAccounts() {
               }
             }}
             disabled={deleteMutation.isPending}
+            title="Delete Account"
           >
             <Trash2 className="h-4 w-4 text-destructive" />
           </Button>
