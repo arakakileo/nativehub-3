@@ -114,9 +114,11 @@ export class OutbrainSource extends BaseTrafficSource {
     return withRetry(async () => {
       await this.rateLimiter.acquire()
 
+      // Outbrain API limits to 50 items per page
+      const limit = Math.min(options.perPage || 50, 50)
       const url = buildUrl(config.baseUrl, `/marketers/${this.marketerId}/campaigns`, {
-        offset: options.page ? (options.page - 1) * (options.perPage || 100) : 0,
-        limit: options.perPage || 100,
+        offset: options.page ? (options.page - 1) * limit : 0,
+        limit,
       })
 
       logger.debug({ url, marketerId: this.marketerId }, 'Outbrain getCampaigns request')
@@ -184,10 +186,12 @@ export class OutbrainSource extends BaseTrafficSource {
       await this.rateLimiter.acquire()
 
       // Outbrain calls them "publishers" instead of widgets
+      // Outbrain API limits to 50 items per page
+      const limit = Math.min(options.perPage || 50, 50)
       const response = await makeRequest<{ publishers: OutbrainPublisher[] }>(
         buildUrl(config.baseUrl, `/marketers/${this.marketerId}/campaigns/${options.campaignId}/publishers`, {
-          offset: options.page ? (options.page - 1) * (options.perPage || 100) : 0,
-          limit: options.perPage || 100,
+          offset: options.page ? (options.page - 1) * limit : 0,
+          limit,
         }),
         {
           headers: {
