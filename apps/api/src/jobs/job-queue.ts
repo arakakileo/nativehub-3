@@ -31,6 +31,10 @@ export async function initJobQueue(): Promise<void> {
   await boss.start()
   logger.info('pg-boss job queue started')
 
+  // Create queues explicitly before registering workers and schedules
+  await boss.createQueue('sync-campaigns')
+  await boss.createQueue('run-optimizer')
+
   // Register sync-campaigns handler (pg-boss v10 receives array of jobs)
   await boss.work('sync-campaigns', { pollingIntervalSeconds: 30 }, async (jobs) => {
     for (const job of jobs) {
