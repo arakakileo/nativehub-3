@@ -6,6 +6,11 @@ import { RuleEngine, type WidgetData } from './rule-engine.js'
 import { ActionExecutor } from './action-executor.js'
 import { RULE_TEMPLATES } from './rule-templates.js'
 import { logger } from '../../lib/logger.js'
+// Source-aware components (Phase 2 & 3)
+import { createOptimizerAdapter, hasOptimizerSupport } from './adapters/index.js'
+import { SourceAwareRuleEngine, type RuleEngineContext } from './source-aware-rule-engine.js'
+import { SourceAwareActionExecutor } from './source-aware-action-executor.js'
+import { getTemplatesForSource } from './source-rule-templates.js'
 
 /**
  * Optimizer Service - Manages optimization campaigns and rules
@@ -177,7 +182,7 @@ class OptimizerService {
 
     for (const campaign of campaigns) {
       try {
-        const result = await this.optimizeCampaign(campaign.id)
+        const result = await this.optimizeCampaignSourceAware(campaign.id)
         totalActions += result.actionsExecuted
       } catch (error) {
         logger.error(
@@ -193,6 +198,198 @@ class OptimizerService {
     )
 
     return { campaignsProcessed: campaigns.length, totalActions }
+  }
+
+  /**
+   * Run source-aware optimization for a single campaign
+   * Uses new adapters, rule engine, and action executor
+   */
+  async optimizeCampaignSourceAware(optimizerCampaignId: string): Promise<{
+    actionsGenerated: number
+    actionsExecuted: number
+    actionsFailed: number
+    skipped: number
+  }> {
+    logger.info({ optimizerCampaignId }, 'Starting source-aware campaign optimization')
+
+    // Get optimizer campaign with source account
+    const campaign = await db.query.optimizerCampaigns.findFirst({
+      where: eq(optimizerCampaigns.id, optimizerCampaignId),
+    })
+
+    if (!campaign || !campaign.enabled) {
+      logger.info({ optimizerCampaignId }, 'Campaign not found or disabled')
+      return { actionsGenerated: 0, actionsExecuted: 0, actionsFailed: 0, skipped: 0 }
+    }
+
+    // Get source account to determine source type
+    const account = await db.query.sourceAccounts.findFirst({
+      where: eq(sourceAccounts.id, campaign.sourceAccountId),
+    })
+
+    if (!account) {
+      logger.error({ sourceAccountId: campaign.sourceAccountId }, 'Source account not found')
+      return { actionsGenerated: 0, actionsExecuted: 0, actionsFailed: 0, skipped: 0 }
+    }
+
+    const sourceId = account.sourceId
+
+    // Check if source has optimizer support
+    if (!hasOptimizerSupport(sourceId)) {
+      logger.warn({ sourceId }, 'Source does not have optimizer adapter support')
+      // Fall back to legacy optimization
+      const result = await this.optimizeCampaign(optimizerCampaignId)
+      return { ...result, actionsFailed: 0, skipped: 0 }
+    }
+
+    const targetCpa = parseFloat(campaign.targetCpa)
+
+    // Get authenticated source and create adapter
+    const source = await getAuthenticatedSource(campaign.sourceAccountId)
+    const adapter = createOptimizerAdapter(sourceId, source)
+    const constraints = adapter.getConstraints()
+
+    // Get date range for metrics (last 7 days for reliable data)
+    const to = new Date()
+    const from = new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000)
+
+    // Fetch placements with metrics via adapter
+    const placements = await adapter.getPlacementsWithMetrics({
+      campaignId: campaign.externalCampaignId,
+      from: from.toISOString().split('T')[0],
+      to: to.toISOString().split('T')[0],
+    })
+
+    if (placements.length === 0) {
+      logger.info({ optimizerCampaignId }, 'No placements found')
+      return { actionsGenerated: 0, actionsExecuted: 0, actionsFailed: 0, skipped: 0 }
+    }
+
+    // Get rules for this campaign
+    const rules = await this.getRules(optimizerCampaignId)
+    if (rules.length === 0) {
+      logger.info({ optimizerCampaignId }, 'No rules configured')
+      return { actionsGenerated: 0, actionsExecuted: 0, actionsFailed: 0, skipped: 0 }
+    }
+
+    // Count currently blocked placements for block limit tracking
+    const blockedCount = await this.getBlockedCount(campaign.sourceAccountId, campaign.externalCampaignId)
+
+    // Create rule engine context
+    const context: RuleEngineContext = {
+      sourceId,
+      targetCpa,
+      constraints,
+      lastDataUpdate: new Date(), // Fresh data from API
+      currentBlockedCount: blockedCount,
+    }
+
+    // Generate actions using source-aware rule engine
+    const sourceAwareEngine = new SourceAwareRuleEngine()
+    const actions = sourceAwareEngine.generateActions(rules, placements, context)
+
+    if (actions.length === 0) {
+      logger.info({ optimizerCampaignId }, 'No actions generated')
+      return { actionsGenerated: 0, actionsExecuted: 0, actionsFailed: 0, skipped: 0 }
+    }
+
+    // Execute actions using source-aware executor
+    const executor = new SourceAwareActionExecutor(
+      adapter,
+      optimizerCampaignId,
+      campaign.externalCampaignId,
+      campaign.sourceAccountId
+    )
+
+    const result = await executor.executeBatch(actions, {
+      stopOnFirstFailure: false,
+      maxRetries: 3,
+    })
+
+    logger.info(
+      {
+        optimizerCampaignId,
+        sourceId,
+        actionsGenerated: actions.length,
+        actionsExecuted: result.summary.success,
+        actionsFailed: result.summary.failed,
+        skipped: result.summary.skipped,
+      },
+      'Source-aware campaign optimization complete'
+    )
+
+    // Update last run status
+    await db
+      .update(optimizerCampaigns)
+      .set({
+        lastRunAt: new Date(),
+        lastRunStatus: result.summary.failed > 0 ? 'partial' : 'success',
+        lastRunSummary: {
+          actionsGenerated: actions.length,
+          actionsExecuted: result.summary.success,
+          actionsFailed: result.summary.failed,
+          skipped: result.summary.skipped,
+          placementsEvaluated: placements.length,
+        },
+      })
+      .where(eq(optimizerCampaigns.id, optimizerCampaignId))
+
+    return {
+      actionsGenerated: actions.length,
+      actionsExecuted: result.summary.success,
+      actionsFailed: result.summary.failed,
+      skipped: result.summary.skipped,
+    }
+  }
+
+  /**
+   * Get count of blocked placements for a campaign
+   */
+  private async getBlockedCount(sourceAccountId: string, externalCampaignId: string): Promise<number> {
+    const { widgetBlacklist } = await import('../../db/schema.js')
+    const result = await db
+      .select()
+      .from(widgetBlacklist)
+      .where(
+        and(
+          eq(widgetBlacklist.sourceAccountId, sourceAccountId),
+          eq(widgetBlacklist.externalCampaignId, externalCampaignId)
+        )
+      )
+    return result.length
+  }
+
+  /**
+   * Add default source-specific template rules to an optimizer campaign
+   */
+  async addSourceAwareDefaultRules(optimizerCampaignId: string, sourceId: string): Promise<void> {
+    const templates = getTemplatesForSource(sourceId)
+
+    // Select key templates for defaults
+    const defaultTemplateIds = [
+      `${sourceId}_block_no_conv_spending`,
+      `${sourceId}_block_high_cpa`,
+      'universal_pause_bleeding',
+    ]
+
+    let priority = 1
+    for (const templateId of defaultTemplateIds) {
+      const template = templates.find((t) => t.id === templateId)
+      if (!template) continue
+
+      await db.insert(optimizerRules).values({
+        optimizerCampaignId,
+        name: template.name,
+        enabled: true,
+        priority: priority++,
+        ruleType: 'template',
+        templateId: template.id,
+        condition: template.condition,
+        action: template.action,
+      })
+    }
+
+    logger.info({ optimizerCampaignId, sourceId, rulesAdded: priority - 1 }, 'Added source-aware default rules')
   }
 }
 

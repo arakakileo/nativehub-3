@@ -75,6 +75,10 @@ beforeAll(async () => {
       bid_strategy TEXT NOT NULL DEFAULT 'target_cpa',
       bid_strategy_config JSONB NOT NULL DEFAULT '{}',
       custom_thresholds JSONB,
+      last_run_at TIMESTAMPTZ,
+      last_run_status TEXT,
+      last_run_summary JSONB,
+      last_run_error TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE(source_account_id, external_campaign_id)

@@ -1,55 +1,307 @@
 import { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Zap, Plus, Trash2, X, Clock, CheckCircle, AlertCircle } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import {
+  Zap,
+  Plus,
+  Play,
+  Settings,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+  Activity,
+  Trash2,
+} from 'lucide-react'
 import { DataTable } from '../components/ui/DataTable'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { Button } from '../components/ui/Button'
+import { Modal } from '../components/ui/Modal'
 import {
+  useOptimizerCampaigns,
+  useOptimizerStatus,
   useOptimizerRules,
-  useCreateOptimizerRule,
-  useDeleteOptimizerRule,
   useOptimizerActions,
   useRunOptimizer,
+  useRunOptimizerCampaign,
+  useCreateOptimizerCampaign,
+  useDeleteOptimizerRule,
 } from '../hooks/useOptimizer'
-import type { OptimizerRule, OptimizerAction } from '../lib/api'
+import { useCampaigns } from '../hooks/useCampaigns'
+import { useSourceAccounts } from '../hooks/useSourceAccounts'
+import { formatCurrency, getSourceColor } from '../lib/utils'
+import type { OptimizerCampaign, OptimizerRule, OptimizerAction, Campaign, SourceAccount } from '../lib/api'
 
-const RULE_TEMPLATES = [
-  { id: 'blacklist_no_conv', name: 'Blacklist No Conversions', description: 'Blacklist widgets with spend but no conversions' },
-  { id: 'blacklist_high_cpa', name: 'Blacklist High CPA', description: 'Blacklist widgets with CPA above threshold' },
-  { id: 'raise_bid_good_cpa', name: 'Raise Bid Good CPA', description: 'Increase bids for high-converting widgets' },
-  { id: 'lower_bid_bad_cpa', name: 'Lower Bid Bad CPA', description: 'Decrease bids for underperforming widgets' },
-  { id: 'pause_bleeding', name: 'Pause Bleeding Campaigns', description: 'Pause campaigns spending without results' },
-]
+type TabType = 'campaigns' | 'rules' | 'actions'
 
-export function Optimizer() {
-  const [showModal, setShowModal] = useState(false)
-  const [activeTab, setActiveTab] = useState<'rules' | 'actions'>('rules')
+// Scheduler Status Card Component
+function SchedulerStatusCard() {
+  const { data: status, isLoading } = useOptimizerStatus()
 
-  const { data: rules = [], isLoading: rulesLoading } = useOptimizerRules()
-  const { data: actions = [], isLoading: actionsLoading } = useOptimizerActions()
-  const createMutation = useCreateOptimizerRule()
-  const deleteMutation = useDeleteOptimizerRule()
-  const runMutation = useRunOptimizer()
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-2">
+        <div className="h-2 w-2 rounded-full bg-muted animate-pulse" />
+        <span className="text-sm text-muted-foreground">Loading...</span>
+      </div>
+    )
+  }
+
+  const isActive = status?.scheduler?.active
+  const cron = status?.scheduler?.cron
+  const pendingJobs = status?.queue?.pending ?? 0
+  const activeJobs = status?.queue?.active ?? 0
+
+  return (
+    <div className="flex items-center gap-4 rounded-lg border bg-card px-4 py-2">
+      <div className="flex items-center gap-2">
+        <div className={`h-2 w-2 rounded-full ${isActive ? 'bg-green-500' : 'bg-yellow-500'}`} />
+        <span className="text-sm font-medium">
+          {isActive ? 'Scheduler Active' : 'Scheduler Inactive'}
+        </span>
+      </div>
+      {cron && (
+        <span className="text-xs text-muted-foreground">
+          <Clock className="inline h-3 w-3 mr-1" />
+          {cron}
+        </span>
+      )}
+      {(pendingJobs > 0 || activeJobs > 0) && (
+        <span className="text-xs text-muted-foreground">
+          <Activity className="inline h-3 w-3 mr-1" />
+          {activeJobs} running, {pendingJobs} pending
+        </span>
+      )}
+    </div>
+  )
+}
+
+// Add Campaign Modal Component
+function AddCampaignModal({
+  isOpen,
+  onClose,
+}: {
+  isOpen: boolean
+  onClose: () => void
+}) {
+  const { data: campaigns = [] } = useCampaigns()
+  const { data: accounts = [] } = useSourceAccounts()
+  const { data: existingOptCampaigns = [] } = useOptimizerCampaigns()
+  const createMutation = useCreateOptimizerCampaign()
 
   const [form, setForm] = useState({
-    templateId: '',
-    name: '',
+    campaignId: '',
+    targetCpa: '',
+    bidStrategy: 'target_cpa' as const,
   })
+
+  // Filter out campaigns that already have optimizer
+  const existingIds = new Set(
+    existingOptCampaigns.map((c) => `${c.sourceAccountId}-${c.externalCampaignId}`)
+  )
+  const availableCampaigns = campaigns.filter(
+    (c) => !existingIds.has(`${c.sourceAccountId}-${c.externalCampaignId}`)
+  )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const template = RULE_TEMPLATES.find((t) => t.id === form.templateId)
+    const campaign = campaigns.find((c) => c.id === form.campaignId)
+    if (!campaign) return
+
     await createMutation.mutateAsync({
-      name: form.name || template?.name || 'Custom Rule',
-      templateId: form.templateId || undefined,
-      conditions: {},
-      actions: [],
-      isActive: true,
+      sourceAccountId: campaign.sourceAccountId,
+      externalCampaignId: campaign.externalCampaignId,
+      targetCpa: parseFloat(form.targetCpa),
+      bidStrategy: form.bidStrategy,
     })
-    setShowModal(false)
-    setForm({ templateId: '', name: '' })
+
+    setForm({ campaignId: '', targetCpa: '', bidStrategy: 'target_cpa' })
+    onClose()
   }
 
+  const getSourceForCampaign = (campaign: Campaign) => {
+    const account = accounts.find((a: SourceAccount) => a.id === campaign.sourceAccountId)
+    return account?.sourceId || 'unknown'
+  }
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Enable Optimizer for Campaign">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="mb-1 block text-sm font-medium">Select Campaign</label>
+          <select
+            value={form.campaignId}
+            onChange={(e) => setForm({ ...form, campaignId: e.target.value })}
+            className="w-full rounded-lg border bg-background px-3 py-2"
+            required
+          >
+            <option value="">Choose a campaign...</option>
+            {availableCampaigns.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({getSourceForCampaign(c)})
+              </option>
+            ))}
+          </select>
+          {availableCampaigns.length === 0 && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              All campaigns already have optimizer enabled
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm font-medium">Target CPA ($)</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0.01"
+            value={form.targetCpa}
+            onChange={(e) => setForm({ ...form, targetCpa: e.target.value })}
+            placeholder="15.00"
+            className="w-full rounded-lg border bg-background px-3 py-2"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm font-medium">Bid Strategy</label>
+          <select
+            value={form.bidStrategy}
+            onChange={(e) =>
+              setForm({ ...form, bidStrategy: e.target.value as typeof form.bidStrategy })
+            }
+            className="w-full rounded-lg border bg-background px-3 py-2"
+          >
+            <option value="target_cpa">Target CPA</option>
+            <option value="maximize_conversions">Maximize Conversions</option>
+            <option value="manual">Manual</option>
+          </select>
+        </div>
+
+        <div className="flex gap-3 pt-2">
+          <Button type="button" variant="outline" className="flex-1" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            className="flex-1"
+            isLoading={createMutation.isPending}
+            disabled={!form.campaignId || !form.targetCpa}
+          >
+            Enable Optimizer
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+export function Optimizer() {
+  const navigate = useNavigate()
+  const [activeTab, setActiveTab] = useState<TabType>('campaigns')
+  const [showAddModal, setShowAddModal] = useState(false)
+
+  // Data hooks
+  const { data: optCampaigns = [], isLoading: campaignsLoading } = useOptimizerCampaigns()
+  const { data: campaigns = [] } = useCampaigns()
+  const { data: accounts = [] } = useSourceAccounts()
+  const { data: rules = [], isLoading: rulesLoading } = useOptimizerRules()
+  const { data: actions = [], isLoading: actionsLoading } = useOptimizerActions()
+
+  // Mutations
+  const runAllMutation = useRunOptimizer()
+  const runCampaignMutation = useRunOptimizerCampaign()
+  const deleteRuleMutation = useDeleteOptimizerRule()
+
+  // Helpers
+  const getCampaignName = (optCampaign: OptimizerCampaign) => {
+    const campaign = campaigns.find(
+      (c) =>
+        c.sourceAccountId === optCampaign.sourceAccountId &&
+        c.externalCampaignId === optCampaign.externalCampaignId
+    )
+    return campaign?.name || optCampaign.externalCampaignId
+  }
+
+  const getSourceId = (optCampaign: OptimizerCampaign) => {
+    const account = accounts.find((a: SourceAccount) => a.id === optCampaign.sourceAccountId)
+    return account?.sourceId || 'unknown'
+  }
+
+  // Table columns for Campaigns tab
+  const campaignColumns = [
+    {
+      key: 'name',
+      header: 'Campaign',
+      render: (c: OptimizerCampaign) => {
+        const source = getSourceId(c)
+        return (
+          <div
+            className="flex items-center gap-3 cursor-pointer"
+            onClick={() => navigate(`/optimizer/${c.id}`)}
+          >
+            <span className={`h-2 w-2 rounded-full ${getSourceColor(source)}`} />
+            <div>
+              <p className="font-medium hover:text-primary">{getCampaignName(c)}</p>
+              <p className="text-xs text-muted-foreground capitalize">{source}</p>
+            </div>
+          </div>
+        )
+      },
+    },
+    {
+      key: 'targetCpa',
+      header: 'Target CPA',
+      render: (c: OptimizerCampaign) => formatCurrency(c.targetCpa),
+      className: 'text-right',
+    },
+    {
+      key: 'bidStrategy',
+      header: 'Strategy',
+      render: (c: OptimizerCampaign) => (
+        <span className="capitalize text-sm">{c.bidStrategy.replace(/_/g, ' ')}</span>
+      ),
+    },
+    {
+      key: 'enabled',
+      header: 'Status',
+      render: (c: OptimizerCampaign) => (
+        <StatusBadge status={c.enabled ? 'active' : 'paused'} />
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      render: (c: OptimizerCampaign) => (
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={(e) => {
+              e.stopPropagation()
+              runCampaignMutation.mutate(c.id)
+            }}
+            disabled={runCampaignMutation.isPending}
+            title="Run optimization"
+          >
+            <Play className="h-4 w-4" />
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={(e) => {
+              e.stopPropagation()
+              navigate(`/optimizer/${c.id}`)
+            }}
+            title="Settings"
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ]
+
+  // Table columns for Rules tab
   const rulesColumns = [
     { key: 'name', header: 'Rule Name' },
     {
@@ -79,7 +331,7 @@ export function Optimizer() {
           size="sm"
           variant="ghost"
           onClick={() => {
-            if (confirm('Delete this rule?')) deleteMutation.mutate(r.id)
+            if (confirm('Delete this rule?')) deleteRuleMutation.mutate(r.id)
           }}
         >
           <Trash2 className="h-4 w-4 text-destructive" />
@@ -88,6 +340,7 @@ export function Optimizer() {
     },
   ]
 
+  // Table columns for Actions tab
   const actionsColumns = [
     {
       key: 'actionType',
@@ -96,30 +349,38 @@ export function Optimizer() {
         <span className="capitalize">{a.actionType.replace(/_/g, ' ')}</span>
       ),
     },
-    { key: 'targetType', header: 'Target Type' },
-    { key: 'targetId', header: 'Target ID' },
     {
-      key: 'status',
+      key: 'targetName',
+      header: 'Target',
+      render: (a: OptimizerAction) => a.targetName || a.targetId,
+    },
+    { key: 'reason', header: 'Reason' },
+    {
+      key: 'executed',
       header: 'Status',
       render: (a: OptimizerAction) => {
-        const icons: Record<string, React.ReactNode> = {
-          pending: <Clock className="h-4 w-4 text-yellow-500" />,
-          executed: <CheckCircle className="h-4 w-4 text-green-500" />,
-          failed: <AlertCircle className="h-4 w-4 text-red-500" />,
-        }
+        const icon = a.executed ? (
+          a.error ? (
+            <AlertCircle className="h-4 w-4 text-red-500" />
+          ) : (
+            <CheckCircle className="h-4 w-4 text-green-500" />
+          )
+        ) : (
+          <Clock className="h-4 w-4 text-yellow-500" />
+        )
+        const label = a.executed ? (a.error ? 'Failed' : 'Executed') : 'Pending'
         return (
           <div className="flex items-center gap-2">
-            {icons[a.status]}
-            <span className="capitalize">{a.status}</span>
+            {icon}
+            <span className="capitalize">{label}</span>
           </div>
         )
       },
     },
     {
-      key: 'executedAt',
-      header: 'Executed',
-      render: (a: OptimizerAction) =>
-        a.executedAt ? new Date(a.executedAt).toLocaleString() : '-',
+      key: 'createdAt',
+      header: 'Date',
+      render: (a: OptimizerAction) => new Date(a.createdAt).toLocaleString(),
     },
   ]
 
@@ -139,18 +400,19 @@ export function Optimizer() {
             Automated bid optimization and rule management
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex items-center gap-3">
+          <SchedulerStatusCard />
           <Button
-            onClick={() => runMutation.mutate()}
+            onClick={() => runAllMutation.mutate()}
             variant="secondary"
-            isLoading={runMutation.isPending}
+            isLoading={runAllMutation.isPending}
           >
             <Zap className="h-4 w-4" />
-            Run Now
+            Run All
           </Button>
-          <Button onClick={() => setShowModal(true)}>
+          <Button onClick={() => setShowAddModal(true)}>
             <Plus className="h-4 w-4" />
-            Add Rule
+            Add Campaign
           </Button>
         </div>
       </div>
@@ -158,24 +420,44 @@ export function Optimizer() {
       {/* Tabs */}
       <div className="border-b">
         <div className="flex gap-4">
-          {(['rules', 'actions'] as const).map((tab) => (
+          {([
+            { key: 'campaigns', label: 'Campaigns' },
+            { key: 'rules', label: 'Rules' },
+            { key: 'actions', label: 'Action History' },
+          ] as const).map((tab) => (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
               className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-                activeTab === tab
+                activeTab === tab.key
                   ? 'border-primary text-primary'
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
-              {tab === 'rules' ? 'Rules' : 'Action History'}
+              {tab.label}
+              {tab.key === 'campaigns' && optCampaigns.length > 0 && (
+                <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs">
+                  {optCampaigns.length}
+                </span>
+              )}
             </button>
           ))}
         </div>
       </div>
 
       {/* Content */}
-      {activeTab === 'rules' ? (
+      {activeTab === 'campaigns' && (
+        <DataTable
+          data={optCampaigns}
+          columns={campaignColumns}
+          keyField="id"
+          isLoading={campaignsLoading}
+          emptyMessage="No optimizer campaigns configured. Click 'Add Campaign' to enable optimization for a campaign."
+          onRowClick={(row) => navigate(`/optimizer/${row.id}`)}
+        />
+      )}
+
+      {activeTab === 'rules' && (
         <DataTable
           data={rules}
           columns={rulesColumns}
@@ -183,7 +465,9 @@ export function Optimizer() {
           isLoading={rulesLoading}
           emptyMessage="No optimization rules configured."
         />
-      ) : (
+      )}
+
+      {activeTab === 'actions' && (
         <DataTable
           data={actions}
           columns={actionsColumns}
@@ -193,76 +477,8 @@ export function Optimizer() {
         />
       )}
 
-      {/* Add Rule Modal */}
-      <AnimatePresence>
-        {showModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-            onClick={() => setShowModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-md rounded-xl bg-card p-6 shadow-lg"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-lg font-semibold">Add Optimization Rule</h2>
-                <button onClick={() => setShowModal(false)} className="rounded-lg p-1 hover:bg-muted">
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Template</label>
-                  <select
-                    value={form.templateId}
-                    onChange={(e) => setForm({ ...form, templateId: e.target.value })}
-                    className="w-full rounded-lg border bg-background px-3 py-2"
-                  >
-                    <option value="">Custom Rule</option>
-                    {RULE_TEMPLATES.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </select>
-                  {form.templateId && (
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {RULE_TEMPLATES.find((t) => t.id === form.templateId)?.description}
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Rule Name (optional)</label>
-                  <input
-                    type="text"
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="My Custom Rule"
-                    className="w-full rounded-lg border bg-background px-3 py-2"
-                  />
-                </div>
-
-                <div className="flex gap-3 pt-2">
-                  <Button type="button" variant="outline" className="flex-1" onClick={() => setShowModal(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" className="flex-1" isLoading={createMutation.isPending}>
-                    Add Rule
-                  </Button>
-                </div>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Add Campaign Modal */}
+      <AddCampaignModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} />
     </div>
   )
 }

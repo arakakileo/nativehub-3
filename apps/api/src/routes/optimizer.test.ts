@@ -20,6 +20,12 @@ vi.mock('../services/optimizer/index.js', () => ({
       totalActions: 5,
       campaignsProcessed: 2,
     }),
+    optimizeCampaignSourceAware: vi.fn().mockResolvedValue({
+      actionsGenerated: 3,
+      actionsExecuted: 2,
+      actionsFailed: 1,
+      skipped: false,
+    }),
   },
 }))
 
@@ -406,7 +412,45 @@ function createOptimizerRoutes() {
         })),
       })
     })
-    // Trigger manual optimization run
+    // Trigger manual optimization for a specific campaign
+    .post('/campaigns/:id/run', async (c) => {
+      const user = c.get('user')
+      const id = c.req.param('id')
+
+      // Verify campaign exists
+      const campaigns = await db.select().from(optimizerCampaigns)
+        .where(eq(optimizerCampaigns.id, id))
+
+      if (campaigns.length === 0) {
+        return c.json({ error: 'Optimizer campaign not found' }, 404)
+      }
+
+      const campaign = campaigns[0]
+
+      // Verify user owns the source account
+      const accounts = await db.select({ id: sourceAccounts.id })
+        .from(sourceAccounts)
+        .where(and(
+          eq(sourceAccounts.id, campaign.sourceAccountId),
+          eq(sourceAccounts.userId, user.id)
+        ))
+
+      if (accounts.length === 0) {
+        return c.json({ error: 'Optimizer campaign not found' }, 404)
+      }
+
+      // Run optimization for this specific campaign
+      const result = await optimizerService.optimizeCampaignSourceAware(id)
+
+      return c.json({
+        campaignId: id,
+        actionsGenerated: result.actionsGenerated,
+        actionsExecuted: result.actionsExecuted,
+        actionsFailed: result.actionsFailed,
+        skipped: result.skipped,
+      })
+    })
+    // Trigger manual optimization run for all campaigns
     .post('/run', async (c) => {
       const user = c.get('user')
 
@@ -858,6 +902,81 @@ describe('Optimizer Routes - Integration (TDD)', () => {
       })
       expect(json.data[0].id).toBeDefined()
       expect(json.data[0].optimizerCampaignId).toBe(campaign.id)
+    })
+  })
+
+  describe('POST /api/v1/optimizer/campaigns/:id/run', () => {
+    it('should return 401 without auth header', async () => {
+      const res = await client.post('/api/v1/optimizer/campaigns/some-id/run', {})
+      expect(res.status).toBe(401)
+    })
+
+    it('should return 404 for non-existent campaign', async () => {
+      const res = await client.post('/api/v1/optimizer/campaigns/00000000-0000-0000-0000-000000000000/run', {}, {
+        headers: createAuthHeaders(),
+      })
+      expect(res.status).toBe(404)
+    })
+
+    it('should return 404 for other user campaign', async () => {
+      const otherAccount = await seedSourceAccount({
+        userId: TEST_USER_ID_2,
+        name: 'Other Account',
+      })
+      const campaign = await seedOptimizerCampaign({
+        sourceAccountId: otherAccount.id,
+      })
+
+      const res = await client.post(`/api/v1/optimizer/campaigns/${campaign.id}/run`, {}, {
+        headers: createAuthHeaders(),
+      })
+      expect(res.status).toBe(404)
+    })
+
+    it('should trigger optimization for specific campaign', async () => {
+      const account = await seedSourceAccount()
+      const campaign = await seedOptimizerCampaign({
+        sourceAccountId: account.id,
+      })
+
+      mockOptimizerService.optimizeCampaignSourceAware.mockClear()
+
+      const res = await client.post(`/api/v1/optimizer/campaigns/${campaign.id}/run`, {}, {
+        headers: createAuthHeaders(),
+      })
+
+      expect(res.status).toBe(200)
+      const json = await res.json()
+      expect(json.campaignId).toBe(campaign.id)
+      expect(json.actionsGenerated).toBe(3)
+      expect(json.actionsExecuted).toBe(2)
+      expect(json.actionsFailed).toBe(1)
+      expect(json.skipped).toBe(false)
+      expect(mockOptimizerService.optimizeCampaignSourceAware).toHaveBeenCalledWith(campaign.id)
+    })
+
+    it('should handle skipped campaigns', async () => {
+      const account = await seedSourceAccount()
+      const campaign = await seedOptimizerCampaign({
+        sourceAccountId: account.id,
+        enabled: false,
+      })
+
+      mockOptimizerService.optimizeCampaignSourceAware.mockResolvedValueOnce({
+        actionsGenerated: 0,
+        actionsExecuted: 0,
+        actionsFailed: 0,
+        skipped: true,
+      })
+
+      const res = await client.post(`/api/v1/optimizer/campaigns/${campaign.id}/run`, {}, {
+        headers: createAuthHeaders(),
+      })
+
+      expect(res.status).toBe(200)
+      const json = await res.json()
+      expect(json.skipped).toBe(true)
+      expect(json.actionsGenerated).toBe(0)
     })
   })
 

@@ -308,7 +308,46 @@ export const optimizerRoutes = new Hono()
     })
   })
 
-  // Trigger manual optimization run
+  // Trigger manual optimization for a specific campaign
+  .post('/campaigns/:id/run', async (c) => {
+    const userId = c.get('userId')
+    const id = c.req.param('id')
+
+    // Verify campaign exists
+    const campaigns = await db.select().from(optimizerCampaigns)
+      .where(eq(optimizerCampaigns.id, id))
+
+    if (campaigns.length === 0) {
+      return c.json({ error: 'Optimizer campaign not found' }, 404)
+    }
+
+    const campaign = campaigns[0]
+
+    // Verify user owns the source account
+    const accounts = await db.select({ id: sourceAccounts.id })
+      .from(sourceAccounts)
+      .where(and(
+        eq(sourceAccounts.id, campaign.sourceAccountId),
+        eq(sourceAccounts.userId, userId)
+      ))
+
+    if (accounts.length === 0) {
+      return c.json({ error: 'Optimizer campaign not found' }, 404)
+    }
+
+    // Run optimization for this specific campaign
+    const result = await optimizerService.optimizeCampaignSourceAware(id)
+
+    return c.json({
+      campaignId: id,
+      actionsGenerated: result.actionsGenerated,
+      actionsExecuted: result.actionsExecuted,
+      actionsFailed: result.actionsFailed,
+      skipped: result.skipped,
+    })
+  })
+
+  // Trigger manual optimization run for all campaigns
   .post('/run', async (c) => {
     const userId = c.get('userId')
 

@@ -138,8 +138,43 @@ class ApiClient {
   getOptimizerActions = (): Promise<OptimizerAction[]> =>
     this.request('/api/v1/optimizer/actions')
 
-  runOptimizer = (): Promise<{ actionsCount: number }> =>
+  runOptimizer = (): Promise<{ actionsCount: number; campaignsProcessed: number }> =>
     this.request('/api/v1/optimizer/run', { method: 'POST' })
+
+  // Optimizer Campaigns
+  getOptimizerCampaigns = (): Promise<OptimizerCampaign[]> =>
+    this.request('/api/v1/optimizer/campaigns')
+
+  getOptimizerCampaign = (id: string): Promise<OptimizerCampaignDetail> =>
+    this.request(`/api/v1/optimizer/campaigns/${id}`)
+
+  createOptimizerCampaign = (data: CreateOptimizerCampaignInput): Promise<OptimizerCampaign> =>
+    this.request('/api/v1/optimizer/campaigns', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+
+  updateOptimizerCampaign = (id: string, data: UpdateOptimizerCampaignInput): Promise<OptimizerCampaign> =>
+    this.request(`/api/v1/optimizer/campaigns/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+
+  runOptimizerCampaign = (id: string): Promise<RunOptimizerResult> =>
+    this.request(`/api/v1/optimizer/campaigns/${id}/run`, { method: 'POST' })
+
+  getOptimizerCampaignActions = (id: string, limit?: number): Promise<OptimizerAction[]> => {
+    const query = limit ? `?limit=${limit}` : ''
+    return this.request(`/api/v1/optimizer/campaigns/${id}/actions${query}`)
+  }
+
+  // Optimizer Status
+  getOptimizerStatus = (): Promise<OptimizerStatus> =>
+    this.request('/api/v1/jobs/optimizer/status')
+
+  // Widgets (with metrics from traffic source)
+  getCampaignWidgets = (sourceAccountId: string, externalCampaignId: string): Promise<Widget[]> =>
+    this.request(`/api/v1/campaigns/${sourceAccountId}/${externalCampaignId}/widgets`)
 }
 
 export const api = new ApiClient()
@@ -216,14 +251,101 @@ export interface OptimizerRule {
 
 export interface OptimizerAction {
   id: string
-  ruleId: string
+  ruleId?: string
   actionType: string
   targetType: string
   targetId: string
-  previousValue?: unknown
-  newValue?: unknown
-  status: 'pending' | 'executed' | 'failed'
+  targetName?: string
+  previousValue?: number | null
+  newValue?: number | null
+  reason: string
+  metrics: Record<string, number>
+  confidenceScore?: number | null
+  executed: boolean
   executedAt?: string
   error?: string
   createdAt: string
+}
+
+// Optimizer Campaign types
+export interface OptimizerCampaign {
+  id: string
+  sourceAccountId: string
+  externalCampaignId: string
+  enabled: boolean
+  targetCpa: number
+  bidStrategy: 'target_cpa' | 'maximize_conversions' | 'manual'
+  createdAt: string
+  updatedAt: string
+}
+
+export interface OptimizerCampaignRule {
+  id: string
+  name: string
+  enabled: boolean
+  priority: number
+  ruleType: 'template' | 'custom'
+  templateId?: string
+  condition?: Record<string, unknown>
+  action: Record<string, unknown>
+}
+
+export interface OptimizerCampaignDetail extends OptimizerCampaign {
+  bidStrategyConfig?: Record<string, unknown>
+  customThresholds?: Record<string, unknown>
+  rules: OptimizerCampaignRule[]
+}
+
+export interface CreateOptimizerCampaignInput {
+  sourceAccountId: string
+  externalCampaignId: string
+  targetCpa: number
+  bidStrategy?: 'target_cpa' | 'maximize_conversions' | 'manual'
+}
+
+export interface UpdateOptimizerCampaignInput {
+  enabled?: boolean
+  targetCpa?: number
+  bidStrategy?: 'target_cpa' | 'maximize_conversions' | 'manual'
+}
+
+export interface RunOptimizerResult {
+  campaignId: string
+  actionsGenerated: number
+  actionsExecuted: number
+  actionsFailed: number
+  skipped: boolean
+}
+
+export interface OptimizerStatus {
+  status: 'ok' | 'error'
+  scheduler: {
+    active: boolean
+    cron: string | null
+    timezone: string | null
+  }
+  queue: {
+    pending: number
+    active: number
+  }
+  error?: string
+}
+
+// Widget types
+export interface Widget {
+  id: string
+  externalId: string
+  campaignId: string
+  name: string
+  domain?: string
+  enabled: boolean
+  metrics: {
+    spend: number
+    impressions: number
+    clicks: number
+    conversions: number
+    ctr: number
+    cpa: number
+    cpc: number
+  }
 }

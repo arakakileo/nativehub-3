@@ -1,18 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { db } from '../../lib/db.js'
-import { sourceAccounts, optimizerCampaigns, optimizerRules } from '../../db/schema.js'
+import { sourceAccounts, optimizerCampaigns, optimizerRules, widgetBlacklist } from '../../db/schema.js'
 import { encryptCredentials } from '../../lib/crypto.js'
 import { TEST_USER_ID } from '../../test/fixtures/index.js'
-import { eq } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 
 // Mock getAuthenticatedSource
 vi.mock('../../traffic-sources/index.js', () => ({
   getAuthenticatedSource: vi.fn(),
 }))
 
+// Mock hasOptimizerSupport to control test flow
+vi.mock('./adapters/index.js', () => ({
+  hasOptimizerSupport: vi.fn(),
+  createOptimizerAdapter: vi.fn(),
+}))
+
 // Import service after mocking
 const { optimizerService } = await import('./optimizer.service.js')
 import { getAuthenticatedSource } from '../../traffic-sources/index.js'
+import { hasOptimizerSupport, createOptimizerAdapter } from './adapters/index.js'
 
 describe('OptimizerService', () => {
   let testSourceAccountId: string
@@ -343,6 +350,196 @@ describe('OptimizerService', () => {
       const result = await optimizerService.optimizeAll()
 
       expect(result.campaignsProcessed).toBe(2)
+    })
+  })
+
+  describe('optimizeCampaignSourceAware', () => {
+    it('should fall back to legacy when source has no optimizer support', async () => {
+      const campaign = await optimizerService.getOrCreateOptimizerCampaign(
+        testSourceAccountId,
+        'ext-legacy-fallback',
+        5.00
+      )
+
+      // Mock no optimizer support
+      vi.mocked(hasOptimizerSupport).mockReturnValue(false)
+
+      // Mock legacy source behavior
+      const mockSource = {
+        getWidgets: vi.fn().mockResolvedValue([]),
+      }
+      vi.mocked(getAuthenticatedSource).mockResolvedValue(mockSource as never)
+
+      const result = await optimizerService.optimizeCampaignSourceAware(campaign.id)
+
+      expect(hasOptimizerSupport).toHaveBeenCalled()
+      // Falls back to legacy, which returns 0 when no widgets
+      expect(result.actionsGenerated).toBe(0)
+      expect(result.actionsExecuted).toBe(0)
+    })
+
+    it('should use source-aware components when adapter available', async () => {
+      // Create campaign
+      const campaign = await optimizerService.getOrCreateOptimizerCampaign(
+        testSourceAccountId,
+        'ext-source-aware',
+        5.00
+      )
+
+      // Mock optimizer support
+      vi.mocked(hasOptimizerSupport).mockReturnValue(true)
+
+      // Mock adapter
+      const mockAdapter = {
+        getConstraints: vi.fn().mockReturnValue({
+          minBid: 0.01,
+          maxBid: 10.00,
+          bidIncrement: 0.01,
+          bidUnit: 'cpc',
+          maxBlockedPlacements: 1500,
+          supportsBulkBlock: true,
+          supportsPlacementBidModifier: true,
+        }),
+        getPlacementsWithMetrics: vi.fn().mockResolvedValue([]),
+      }
+      vi.mocked(createOptimizerAdapter).mockReturnValue(mockAdapter as never)
+
+      // Mock authenticated source
+      vi.mocked(getAuthenticatedSource).mockResolvedValue({} as never)
+
+      const result = await optimizerService.optimizeCampaignSourceAware(campaign.id)
+
+      expect(hasOptimizerSupport).toHaveBeenCalledWith('revcontent')
+      expect(createOptimizerAdapter).toHaveBeenCalled()
+      expect(mockAdapter.getConstraints).toHaveBeenCalled()
+      expect(mockAdapter.getPlacementsWithMetrics).toHaveBeenCalled()
+      expect(result.actionsGenerated).toBe(0)
+      expect(result.actionsExecuted).toBe(0)
+      expect(result.actionsFailed).toBe(0)
+      expect(result.skipped).toBe(0)
+    })
+
+    it('should return early for disabled campaign', async () => {
+      // Create disabled campaign directly
+      const [campaign] = await db.insert(optimizerCampaigns).values({
+        sourceAccountId: testSourceAccountId,
+        externalCampaignId: 'ext-disabled-aware',
+        enabled: false,
+        targetCpa: '5.00',
+        bidStrategy: 'target_cpa',
+        bidStrategyConfig: {},
+      }).returning()
+
+      const result = await optimizerService.optimizeCampaignSourceAware(campaign.id)
+
+      expect(result.actionsGenerated).toBe(0)
+      expect(result.actionsExecuted).toBe(0)
+      expect(result.actionsFailed).toBe(0)
+      expect(result.skipped).toBe(0)
+    })
+
+    it('should return optimization stats even when no actions generated', async () => {
+      const campaign = await optimizerService.getOrCreateOptimizerCampaign(
+        testSourceAccountId,
+        'ext-lastrun-update',
+        5.00
+      )
+
+      vi.mocked(hasOptimizerSupport).mockReturnValue(true)
+
+      // Mock adapter with placements - note: the placement doesn't match
+      // any rules since spend=100 is below threshold and no other conditions met
+      const mockAdapter = {
+        sourceId: 'revcontent',
+        getConstraints: vi.fn().mockReturnValue({
+          minBid: 0.01,
+          maxBid: 10.00,
+          bidIncrement: 0.01,
+          bidUnit: 'cpc',
+          maxBlockedPlacements: 1500,
+          supportsBulkBlock: true,
+          supportsPlacementBidModifier: true,
+        }),
+        getPlacementsWithMetrics: vi.fn().mockResolvedValue([
+          {
+            id: 'placement-1',
+            sourceId: 'revcontent',
+            externalId: 'p1',
+            name: 'Test Placement',
+            type: 'widget',
+            enabled: true,
+            metrics: {
+              spend: 10, // Low spend - won't trigger rules
+              impressions: 1000,
+              clicks: 100,
+              conversions: 2, // Has conversions - won't trigger blacklist
+              ctr: 10,
+              cpa: 5,
+              cpc: 0.1,
+            },
+          },
+        ]),
+        blockPlacements: vi.fn().mockResolvedValue({ success: ['p1'], failed: [] }),
+      }
+      vi.mocked(createOptimizerAdapter).mockReturnValue(mockAdapter as never)
+      vi.mocked(getAuthenticatedSource).mockResolvedValue({} as never)
+
+      const result = await optimizerService.optimizeCampaignSourceAware(campaign.id)
+
+      // The result should reflect the optimization run stats
+      expect(result).toHaveProperty('actionsGenerated')
+      expect(result).toHaveProperty('actionsExecuted')
+      expect(result).toHaveProperty('actionsFailed')
+      expect(result).toHaveProperty('skipped')
+
+      // With no actions generated (placement doesn't match rules),
+      // lastRun fields remain null
+      expect(result.actionsGenerated).toBe(0)
+      expect(result.actionsExecuted).toBe(0)
+    })
+  })
+
+  describe('addSourceAwareDefaultRules', () => {
+    it('should add source-specific template rules', async () => {
+      // Create campaign without default rules
+      const [campaign] = await db.insert(optimizerCampaigns).values({
+        sourceAccountId: testSourceAccountId,
+        externalCampaignId: 'ext-source-rules',
+        enabled: true,
+        targetCpa: '5.00',
+        bidStrategy: 'target_cpa',
+        bidStrategyConfig: {},
+      }).returning()
+
+      await optimizerService.addSourceAwareDefaultRules(campaign.id, 'revcontent')
+
+      const rules = await db
+        .select()
+        .from(optimizerRules)
+        .where(eq(optimizerRules.optimizerCampaignId, campaign.id))
+
+      // Should have added at least some rules
+      expect(rules.length).toBeGreaterThan(0)
+      // Rules should be enabled
+      expect(rules.every((r) => r.enabled)).toBe(true)
+      // Rules should have priorities
+      expect(rules.every((r) => r.priority > 0)).toBe(true)
+    })
+
+    it('should handle sources with no specific templates gracefully', async () => {
+      const [campaign] = await db.insert(optimizerCampaigns).values({
+        sourceAccountId: testSourceAccountId,
+        externalCampaignId: 'ext-unknown-source',
+        enabled: true,
+        targetCpa: '5.00',
+        bidStrategy: 'target_cpa',
+        bidStrategyConfig: {},
+      }).returning()
+
+      // Should not throw for unknown source
+      await expect(
+        optimizerService.addSourceAwareDefaultRules(campaign.id, 'unknown-source')
+      ).resolves.not.toThrow()
     })
   })
 })

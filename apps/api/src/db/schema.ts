@@ -135,6 +135,12 @@ export const optimizerCampaigns = pgTable('optimizer_campaigns', {
 
   customThresholds: jsonb('custom_thresholds'),
 
+  // Job tracking fields (Phase 4)
+  lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+  lastRunStatus: text('last_run_status'), // 'success' | 'partial' | 'failed'
+  lastRunSummary: jsonb('last_run_summary'), // { actionsGenerated, actionsExecuted, actionsFailed, skipped }
+  lastRunError: text('last_run_error'),
+
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
