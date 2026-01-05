@@ -150,16 +150,19 @@ export class OutbrainSource extends BaseTrafficSource {
       logger.info({ campaignCount: response.campaigns.length }, 'Outbrain campaigns fetched')
 
       // Log liveStatus for debugging status mapping (temporary)
+      // Focus on enabled campaigns that end up as pending
       if (response.campaigns.length > 0) {
-        const sampleCampaigns = response.campaigns.slice(0, 3)
-        sampleCampaigns.forEach(c => {
+        const enabledPendingCampaigns = response.campaigns.filter(c =>
+          c.enabled && this.mapCampaignStatus(c) === 'pending'
+        ).slice(0, 3)
+        enabledPendingCampaigns.forEach(c => {
           logger.info({
             campaignId: c.id,
             campaignName: c.name,
             enabled: c.enabled,
             liveStatus: c.liveStatus,
             mappedStatus: this.mapCampaignStatus(c)
-          }, 'Outbrain campaign status mapping')
+          }, 'Outbrain ENABLED campaign with PENDING status - investigating')
         })
       }
 
