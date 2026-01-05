@@ -190,7 +190,7 @@ export class OutbrainSource extends BaseTrafficSource {
       to: toDate,
       breakdown: 'daily', // Get daily breakdown which aggregates per campaign
       sort: '-spend', // Sort by spend descending (includes direction char to avoid 500 errors)
-      limit: 1000, // Get all campaigns
+      limit: 500, // Max allowed by Outbrain API
     })
 
     logger.info({ url, from: fromDate, to: toDate }, 'Outbrain getAllCampaignStatistics request')
