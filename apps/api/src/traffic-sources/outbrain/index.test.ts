@@ -57,7 +57,7 @@ describe('OutbrainSource', () => {
       const result = await source.authenticate({
         username: 'test@example.com',
         password: 'test-password',
-        accessToken: 'marketer-123',
+        accountId: 'marketer-123',
       })
 
       expect(result.accessToken).toBe('outbrain-test-token')
@@ -86,7 +86,7 @@ describe('OutbrainSource', () => {
       await source.authenticate({
         username: 'user',
         password: 'pass',
-        accessToken: 'marketer-123',
+        accountId: 'marketer-123',
       })
     })
 
@@ -188,7 +188,7 @@ describe('OutbrainSource', () => {
       await source.authenticate({
         username: 'user',
         password: 'pass',
-        accessToken: 'marketer-123',
+        accountId: 'marketer-123',
       })
     })
 
@@ -243,7 +243,7 @@ describe('OutbrainSource', () => {
       await source.authenticate({
         username: 'user',
         password: 'pass',
-        accessToken: 'marketer-123',
+        accountId: 'marketer-123',
       })
     })
 
@@ -274,7 +274,7 @@ describe('OutbrainSource', () => {
       await source.authenticate({
         username: 'user',
         password: 'pass',
-        accessToken: 'marketer-123',
+        accountId: 'marketer-123',
       })
     })
 
@@ -309,7 +309,7 @@ describe('OutbrainSource', () => {
       await source.authenticate({
         username: 'user@email.com',
         password: 'password123',
-        accessToken: 'marketer-123',
+        accountId: 'marketer-123',
       })
 
       vi.mocked(makeRequest).mockResolvedValueOnce({

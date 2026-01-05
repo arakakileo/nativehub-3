@@ -34,7 +34,20 @@ export class OutbrainSource extends BaseTrafficSource {
   override setStoredToken(token: string, expiresAt: Date, externalAccountId?: string): void {
     super.setStoredToken(token, expiresAt, externalAccountId)
     this.marketerId = externalAccountId || ''
+    if (!this.marketerId) {
+      logger.warn({ sourceId: this.sourceId }, 'Outbrain token restored without marketerId - API calls will fail')
+    }
     logger.debug({ sourceId: this.sourceId, marketerId: this.marketerId }, 'Restored Outbrain token with marketerId')
+  }
+
+  /**
+   * Validate that marketerId is set before making API calls
+   * @throws Error if marketerId is empty
+   */
+  private validateMarketerId(): void {
+    if (!this.marketerId || this.marketerId.trim() === '') {
+      throw new Error('Outbrain marketerId is not set. Please provide accountId (marketer ID) in credentials.')
+    }
   }
 
   async authenticate(credentials: TrafficSourceCredentials): Promise<AuthResult> {
@@ -111,6 +124,7 @@ export class OutbrainSource extends BaseTrafficSource {
 
   async getCampaigns(options: ListCampaignsOptions = {}): Promise<NormalizedCampaign[]> {
     await this.ensureAuthenticated()
+    this.validateMarketerId()
 
     return withRetry(async () => {
       await this.rateLimiter.acquire()
@@ -122,7 +136,7 @@ export class OutbrainSource extends BaseTrafficSource {
         limit,
       })
 
-      logger.debug({ url, marketerId: this.marketerId }, 'Outbrain getCampaigns request')
+      logger.info({ url, marketerId: this.marketerId }, 'Outbrain getCampaigns request')
 
       const response = await makeRequest<{ campaigns: OutbrainCampaign[] }>(
         url,
@@ -133,18 +147,31 @@ export class OutbrainSource extends BaseTrafficSource {
         }
       )
 
+      logger.info({ campaignCount: response.campaigns.length }, 'Outbrain campaigns fetched')
+
       // Fetch statistics for each campaign in parallel (with rate limiting)
+      let statsFailures = 0
       const campaignsWithStats = await Promise.all(
         response.campaigns.map(async (campaign) => {
           try {
             const stats = await this.getCampaignStatistics(campaign.id, options.from, options.to)
             return this.normalizeCampaign(campaign, stats)
           } catch (error) {
-            logger.warn({ campaignId: campaign.id, error }, 'Failed to fetch Outbrain campaign stats')
+            statsFailures++
+            logger.warn({ campaignId: campaign.id, campaignName: campaign.name, error: error instanceof Error ? error.message : error }, 'Failed to fetch Outbrain campaign stats')
             return this.normalizeCampaign(campaign)
           }
         })
       )
+
+      // Warn if all stats fetches failed - likely a configuration issue
+      if (statsFailures === response.campaigns.length && response.campaigns.length > 0) {
+        logger.error({
+          marketerId: this.marketerId,
+          campaignCount: response.campaigns.length,
+          statsFailures
+        }, 'All Outbrain campaign stats fetches failed - check marketerId and API permissions')
+      }
 
       return campaignsWithStats
     })
@@ -153,9 +180,11 @@ export class OutbrainSource extends BaseTrafficSource {
   /**
    * Fetch campaign performance statistics from Outbrain
    * Uses performanceByContent endpoint and aggregates results
+   * @throws Error if API call fails (don't silently return zeros)
    */
   async getCampaignStatistics(campaignId: string, from?: string, to?: string): Promise<CampaignStats> {
     await this.ensureAuthenticated()
+    this.validateMarketerId()
     await this.rateLimiter.acquire()
 
     // Default to last 30 days if no date range provided
@@ -169,34 +198,33 @@ export class OutbrainSource extends BaseTrafficSource {
 
     logger.debug({ url, campaignId, from: fromDate, to: toDate }, 'Outbrain getCampaignStatistics request')
 
-    try {
-      const response = await makeRequest<{ results: OutbrainPerformanceResult[] }>(
-        url,
-        {
-          headers: {
-            'OB-TOKEN-V1': this.accessToken!,
-          },
-        }
-      )
+    const response = await makeRequest<{ results: OutbrainPerformanceResult[] }>(
+      url,
+      {
+        headers: {
+          'OB-TOKEN-V1': this.accessToken!,
+        },
+      }
+    )
 
-      // Aggregate content-level stats into campaign totals
-      return response.results.reduce<CampaignStats>(
-        (acc, r) => ({
-          spend: acc.spend + (r.spend || 0),
-          impressions: acc.impressions + (r.impressions || 0),
-          clicks: acc.clicks + (r.clicks || 0),
-          conversions: acc.conversions + (r.conversions || 0),
-        }),
-        { spend: 0, impressions: 0, clicks: 0, conversions: 0 }
-      )
-    } catch (error) {
-      logger.warn({ campaignId, error }, 'Failed to fetch Outbrain performance stats, returning zeros')
-      return { spend: 0, impressions: 0, clicks: 0, conversions: 0 }
-    }
+    // Aggregate content-level stats into campaign totals
+    const stats = response.results.reduce<CampaignStats>(
+      (acc, r) => ({
+        spend: acc.spend + (r.spend || 0),
+        impressions: acc.impressions + (r.impressions || 0),
+        clicks: acc.clicks + (r.clicks || 0),
+        conversions: acc.conversions + (r.conversions || 0),
+      }),
+      { spend: 0, impressions: 0, clicks: 0, conversions: 0 }
+    )
+
+    logger.debug({ campaignId, stats, resultsCount: response.results.length }, 'Outbrain stats aggregated')
+    return stats
   }
 
   async getCampaign(campaignId: string): Promise<NormalizedCampaign> {
     await this.ensureAuthenticated()
+    this.validateMarketerId()
 
     return withRetry(async () => {
       await this.rateLimiter.acquire()
@@ -216,6 +244,7 @@ export class OutbrainSource extends BaseTrafficSource {
 
   async toggleCampaign(campaignId: string): Promise<{ enabled: boolean }> {
     await this.ensureAuthenticated()
+    this.validateMarketerId()
 
     return withRetry(async () => {
       await this.rateLimiter.acquire()
@@ -240,6 +269,7 @@ export class OutbrainSource extends BaseTrafficSource {
 
   async getWidgets(options: ListWidgetsOptions): Promise<NormalizedWidget[]> {
     await this.ensureAuthenticated()
+    this.validateMarketerId()
 
     return withRetry(async () => {
       await this.rateLimiter.acquire()
@@ -265,6 +295,7 @@ export class OutbrainSource extends BaseTrafficSource {
 
   async blacklistWidget(campaignId: string, widgetId: string): Promise<BlacklistResult> {
     await this.ensureAuthenticated()
+    this.validateMarketerId()
 
     return withRetry(async () => {
       await this.rateLimiter.acquire()
@@ -294,6 +325,7 @@ export class OutbrainSource extends BaseTrafficSource {
 
   async adjustWidgetBid(campaignId: string, widgetId: string, newBid: number): Promise<BidAdjustmentResult> {
     await this.ensureAuthenticated()
+    this.validateMarketerId()
 
     return withRetry(async () => {
       await this.rateLimiter.acquire()
