@@ -141,12 +141,16 @@ export async function seedSourceAccount(overrides: {
     clientSecret: 'test-client-secret',
   })
 
+  // Convert Buffer to hex string for PGlite compatibility (PGlite cannot serialize Buffer to TEXT)
+  const encryptedHex = encrypted.toString('hex')
+  const ivHex = iv.toString('hex')
+
   const [account] = await db.insert(sourceAccounts).values({
     userId: overrides.userId ?? TEST_USER_ID,
     sourceId: overrides.sourceId ?? 'revcontent',
     name: overrides.name ?? 'Test Account',
-    credentialsEncrypted: encrypted,
-    credentialsIv: iv,
+    credentialsEncrypted: encryptedHex,
+    credentialsIv: ivHex,
     status: overrides.status ?? 'connected',
   }).returning()
 

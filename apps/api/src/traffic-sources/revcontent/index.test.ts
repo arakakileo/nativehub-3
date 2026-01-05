@@ -75,6 +75,7 @@ describe('RevcontentSource', () => {
     })
 
     it('should fetch and normalize campaigns', async () => {
+      // Mock campaigns list
       vi.mocked(makeRequest).mockResolvedValueOnce([
         {
           id: 123,
@@ -83,13 +84,13 @@ describe('RevcontentSource', () => {
           enabled: true,
           budget: 100,
           bid: 0.5,
-          spend: 25,
-          impressions: 10000,
-          clicks: 150,
-          conversions: 5,
           created_at: '2026-01-01T00:00:00Z',
         },
       ])
+      // Mock statistics call
+      vi.mocked(makeRequest).mockResolvedValueOnce({
+        spend: 25, impressions: 10000, clicks: 150, conversions: 5,
+      })
 
       const campaigns = await source.getCampaigns()
 
@@ -106,6 +107,7 @@ describe('RevcontentSource', () => {
     })
 
     it('should calculate metrics correctly', async () => {
+      // Mock campaigns list
       vi.mocked(makeRequest).mockResolvedValueOnce([
         {
           id: 123,
@@ -113,13 +115,13 @@ describe('RevcontentSource', () => {
           status: 'active',
           enabled: true,
           bid: 0.5,
-          spend: 100,
-          impressions: 10000,
-          clicks: 200,
-          conversions: 4,
           created_at: '2026-01-01T00:00:00Z',
         },
       ])
+      // Mock statistics call with metrics
+      vi.mocked(makeRequest).mockResolvedValueOnce({
+        spend: 100, impressions: 10000, clicks: 200, conversions: 4,
+      })
 
       const campaigns = await source.getCampaigns()
 
@@ -135,6 +137,7 @@ describe('RevcontentSource', () => {
     })
 
     it('should handle different campaign statuses', async () => {
+      // Mock campaigns list
       vi.mocked(makeRequest).mockResolvedValueOnce([
         { id: 1, name: 'Active', status: 'active', enabled: true, bid: 0.5, created_at: '2026-01-01' },
         { id: 2, name: 'Paused', status: 'paused', enabled: false, bid: 0.5, created_at: '2026-01-01' },
@@ -142,6 +145,8 @@ describe('RevcontentSource', () => {
         { id: 4, name: 'Stopped', status: 'stopped', enabled: false, bid: 0.5, created_at: '2026-01-01' },
         { id: 5, name: 'Unknown', status: 'unknown', enabled: true, bid: 0.5, created_at: '2026-01-01' },
       ])
+      // Mock statistics calls for each campaign
+      vi.mocked(makeRequest).mockResolvedValue({ spend: 0, impressions: 0, clicks: 0, conversions: 0 })
 
       const campaigns = await source.getCampaigns()
 

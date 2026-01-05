@@ -7,6 +7,7 @@ import {
   type ListWidgetsOptions,
   type BlacklistResult,
   type BidAdjustmentResult,
+  type CampaignStats,
 } from '../interface.js'
 import { TRAFFIC_SOURCE_CONFIG } from '../config.js'
 import { makeRequest, buildUrl } from '../utils/request-helpers.js'
@@ -86,8 +87,61 @@ export class RevcontentSource extends BaseTrafficSource {
         { accessToken: this.accessToken! }
       )
 
-      return response.map((c) => this.normalizeCampaign(c))
+      // Fetch statistics for each campaign in parallel (with rate limiting)
+      const campaignsWithStats = await Promise.all(
+        response.map(async (campaign) => {
+          try {
+            const stats = await this.getCampaignStatistics(String(campaign.id), options.from, options.to)
+            return this.normalizeCampaign(campaign, stats)
+          } catch (error) {
+            logger.warn({ campaignId: campaign.id, error }, 'Failed to fetch Revcontent campaign stats')
+            return this.normalizeCampaign(campaign)
+          }
+        })
+      )
+
+      return campaignsWithStats
     })
+  }
+
+  /**
+   * Fetch campaign performance statistics from Revcontent
+   * Uses stats/boosts endpoint
+   */
+  async getCampaignStatistics(campaignId: string, from?: string, to?: string): Promise<CampaignStats> {
+    await this.ensureAuthenticated()
+    await this.rateLimiter.acquire()
+
+    // Default to last 30 days if no date range provided
+    const toDate = to || new Date().toISOString().split('T')[0]
+    const fromDate = from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+    const url = buildUrl(config.baseUrl, '/stats/boosts', {
+      boost_id: campaignId,
+      date_from: fromDate,
+      date_to: toDate,
+    })
+
+    logger.debug({ url, campaignId, from: fromDate, to: toDate }, 'Revcontent getCampaignStatistics request')
+
+    try {
+      const response = await makeRequest<RevcontentStatsResponse>(
+        url,
+        { accessToken: this.accessToken! }
+      )
+
+      // Extract stats from response
+      const data = response.data || response
+      return {
+        spend: data.spend || 0,
+        impressions: data.impressions || 0,
+        clicks: data.clicks || 0,
+        conversions: data.conversions || 0,
+      }
+    } catch (error) {
+      logger.warn({ campaignId, error }, 'Failed to fetch Revcontent performance stats, returning zeros')
+      return { spend: 0, impressions: 0, clicks: 0, conversions: 0 }
+    }
   }
 
   async getCampaign(campaignId: string): Promise<NormalizedCampaign> {
@@ -216,7 +270,9 @@ export class RevcontentSource extends BaseTrafficSource {
     }
   }
 
-  private normalizeCampaign(campaign: RevcontentCampaign): NormalizedCampaign {
+  private normalizeCampaign(campaign: RevcontentCampaign, stats?: CampaignStats): NormalizedCampaign {
+    // Use fetched stats if available, otherwise fall back to campaign-level data
+    const metricsSource = stats || campaign
     return {
       id: `revcontent-${campaign.id}`,
       externalId: String(campaign.id),
@@ -227,7 +283,7 @@ export class RevcontentSource extends BaseTrafficSource {
       enabled: campaign.enabled,
       budget: campaign.budget || 'unlimited',
       bid: campaign.bid,
-      metrics: this.extractMetrics(campaign),
+      metrics: this.extractMetrics(metricsSource),
       createdAt: campaign.created_at,
       updatedAt: campaign.updated_at || campaign.created_at,
     }
@@ -299,6 +355,19 @@ interface RevcontentWidget {
   name?: string
   domain?: string
   enabled: boolean
+  spend?: number
+  impressions?: number
+  clicks?: number
+  conversions?: number
+}
+
+interface RevcontentStatsResponse {
+  data?: {
+    spend?: number
+    impressions?: number
+    clicks?: number
+    conversions?: number
+  }
   spend?: number
   impressions?: number
   clicks?: number

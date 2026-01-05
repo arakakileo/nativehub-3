@@ -19,16 +19,24 @@ import { users } from './auth-schema.js'
 
 // Custom bytea type for binary data (encrypted credentials)
 // postgres-js handles Buffer directly - no need for hex encoding
+// In tests, PGlite uses TEXT columns with hex strings for compatibility
+const isTestEnv = process.env.NODE_ENV === 'test'
 const bytea = customType<{ data: Buffer; notNull: true; default: false }>({
   dataType() {
     return 'bytea'
   },
-  toDriver(value: Buffer): Buffer {
+  toDriver(value: Buffer | string): Buffer | string {
+    // In tests, convert Buffer to hex string for PGlite TEXT columns
+    if (isTestEnv && Buffer.isBuffer(value)) return value.toString('hex')
+    // Allow hex strings to pass through
+    if (typeof value === 'string') return value
     return value
   },
   fromDriver(value: unknown): Buffer {
     if (Buffer.isBuffer(value)) return value
     if (value instanceof Uint8Array) return Buffer.from(value)
+    // Handle hex string from PGlite TEXT columns in tests
+    if (typeof value === 'string') return Buffer.from(value, 'hex')
     throw new Error(`Invalid bytea value: ${typeof value}`)
   },
 })

@@ -1,11 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { api } from '../lib/api'
+import { api, type CampaignFilters } from '../lib/api'
 
-export function useCampaigns(sourceAccountId?: string) {
+export function useCampaigns(filters?: CampaignFilters) {
   return useQuery({
-    queryKey: ['campaigns', { sourceAccountId }],
-    queryFn: () => api.getCampaigns(sourceAccountId),
+    queryKey: ['campaigns', filters],
+    queryFn: () => api.getCampaigns(filters),
   })
 }
 

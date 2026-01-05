@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Filter, RefreshCw, Pause, Play } from 'lucide-react'
+import { Filter, RefreshCw, Pause, Play, ChevronUp, ChevronDown } from 'lucide-react'
 import { DataTable } from '../components/ui/DataTable'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { Button } from '../components/ui/Button'
@@ -8,32 +8,85 @@ import { CardSkeleton } from '../components/ui/Skeleton'
 import { useCampaigns, useUpdateCampaign } from '../hooks/useCampaigns'
 import { useSourceAccounts } from '../hooks/useSourceAccounts'
 import { formatCurrency, formatNumber, getSourceColor } from '../lib/utils'
-import type { Campaign, SourceAccount } from '../lib/api'
+import type { Campaign, CampaignFilters, SourceAccount } from '../lib/api'
 
 export function Campaigns() {
-  const [selectedSource, setSelectedSource] = useState<string>('')
-  const { data: campaigns = [], isLoading, refetch } = useCampaigns(selectedSource || undefined)
+  const [filters, setFilters] = useState<CampaignFilters>({
+    status: 'all',
+    sortBy: 'spend',
+    sortOrder: 'desc',
+  })
+
+  const { data: campaigns = [], isLoading, refetch } = useCampaigns(filters)
   const { data: accounts = [] } = useSourceAccounts()
   const updateMutation = useUpdateCampaign()
+
+  // Update filter helper
+  const updateFilter = <K extends keyof CampaignFilters>(key: K, value: CampaignFilters[K]) => {
+    setFilters((prev) => ({ ...prev, [key]: value || undefined }))
+  }
+
+  // Toggle sort helper
+  const toggleSort = (column: CampaignFilters['sortBy']) => {
+    setFilters((prev) => ({
+      ...prev,
+      sortBy: column,
+      sortOrder: prev.sortBy === column && prev.sortOrder === 'asc' ? 'desc' : 'asc',
+    }))
+  }
 
   const toggleStatus = (campaign: Campaign) => {
     const newStatus = campaign.status === 'active' ? 'paused' : 'active'
     updateMutation.mutate({ id: campaign.id, data: { status: newStatus } })
   }
 
+  // Sortable header component
+  const SortableHeader = ({
+    column,
+    label,
+    className = '',
+  }: {
+    column: CampaignFilters['sortBy']
+    label: string
+    className?: string
+  }) => (
+    <button
+      onClick={() => toggleSort(column)}
+      className={`flex items-center gap-1 hover:text-foreground transition-colors ${className}`}
+    >
+      {label}
+      {filters.sortBy === column && (
+        filters.sortOrder === 'asc' ? (
+          <ChevronUp className="h-4 w-4" />
+        ) : (
+          <ChevronDown className="h-4 w-4" />
+        )
+      )}
+    </button>
+  )
+
+  // Get source name from campaign
+  const getSourceFromCampaign = (campaign: Campaign) => {
+    const account = accounts.find((a: SourceAccount) => a.id === campaign.sourceAccountId)
+    return account?.sourceId || 'unknown'
+  }
+
   const columns = [
     {
       key: 'name',
-      header: 'Campaign',
-      render: (c: Campaign) => (
-        <div className="flex items-center gap-3">
-          <span className={`h-2 w-2 rounded-full ${getSourceColor(c.source)}`} />
-          <div>
-            <p className="font-medium">{c.name}</p>
-            <p className="text-xs text-muted-foreground capitalize">{c.source}</p>
+      header: () => <SortableHeader column="name" label="Campaign" />,
+      render: (c: Campaign) => {
+        const source = getSourceFromCampaign(c)
+        return (
+          <div className="flex items-center gap-3">
+            <span className={`h-2 w-2 rounded-full ${getSourceColor(source)}`} />
+            <div>
+              <p className="font-medium">{c.name}</p>
+              <p className="text-xs text-muted-foreground capitalize">{source}</p>
+            </div>
           </div>
-        </div>
-      ),
+        )
+      },
     },
     {
       key: 'status',
@@ -41,51 +94,45 @@ export function Campaigns() {
       render: (c: Campaign) => <StatusBadge status={c.status} />,
     },
     {
-      key: 'bidAmount',
-      header: 'Bid',
-      render: (c: Campaign) => formatCurrency(c.bidAmount || 0),
-      className: 'text-right',
-    },
-    {
       key: 'spend',
-      header: 'Spend',
-      render: (c: Campaign) => formatCurrency(c.spend || 0),
+      header: () => <SortableHeader column="spend" label="Spend" className="justify-end" />,
+      render: (c: Campaign) => formatCurrency(c.spend),
       className: 'text-right',
     },
     {
       key: 'impressions',
       header: 'Impr.',
-      render: (c: Campaign) => formatNumber(c.impressions || 0),
+      render: (c: Campaign) => formatNumber(c.impressions),
       className: 'text-right',
     },
     {
       key: 'clicks',
-      header: 'Clicks',
-      render: (c: Campaign) => formatNumber(c.clicks || 0),
+      header: () => <SortableHeader column="clicks" label="Clicks" className="justify-end" />,
+      render: (c: Campaign) => formatNumber(c.clicks),
       className: 'text-right',
     },
     {
       key: 'ctr',
       header: 'CTR',
-      render: (c: Campaign) => {
-        const ctr = c.impressions ? ((c.clicks || 0) / c.impressions) * 100 : 0
-        return `${ctr.toFixed(2)}%`
-      },
+      render: (c: Campaign) => `${c.ctr.toFixed(2)}%`,
+      className: 'text-right',
+    },
+    {
+      key: 'cpc',
+      header: () => <SortableHeader column="cpc" label="CPC" className="justify-end" />,
+      render: (c: Campaign) => formatCurrency(c.cpc),
       className: 'text-right',
     },
     {
       key: 'conversions',
-      header: 'Conv.',
-      render: (c: Campaign) => formatNumber(c.conversions || 0),
+      header: () => <SortableHeader column="conversions" label="Conv." className="justify-end" />,
+      render: (c: Campaign) => formatNumber(c.conversions),
       className: 'text-right',
     },
     {
       key: 'cpa',
       header: 'CPA',
-      render: (c: Campaign) => {
-        const cpa = c.conversions ? (c.spend || 0) / c.conversions : 0
-        return formatCurrency(cpa)
-      },
+      render: (c: Campaign) => formatCurrency(c.cpa),
       className: 'text-right',
     },
     {
@@ -125,28 +172,85 @@ export function Campaigns() {
             Manage all your campaigns across sources
           </p>
         </div>
-        <div className="flex gap-3">
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <select
-              value={selectedSource}
-              onChange={(e) => setSelectedSource(e.target.value)}
-              className="rounded-lg border bg-background px-3 py-2 text-sm"
-            >
-              <option value="">All Sources</option>
-              {accounts.map((acc: SourceAccount) => (
-                <option key={acc.id} value={acc.id}>
-                  {acc.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <Button onClick={() => refetch()} variant="outline">
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </Button>
-        </div>
+        <Button onClick={() => refetch()} variant="outline">
+          <RefreshCw className="h-4 w-4" />
+          Refresh
+        </Button>
       </div>
+
+      {/* Filters Bar */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex items-center gap-3 flex-wrap"
+      >
+        <Filter className="h-4 w-4 text-muted-foreground" />
+
+        {/* Source Account Filter */}
+        <select
+          value={filters.sourceAccountId || ''}
+          onChange={(e) => updateFilter('sourceAccountId', e.target.value)}
+          className="rounded-lg border bg-background px-3 py-2 text-sm"
+        >
+          <option value="">All Sources</option>
+          {accounts.map((acc: SourceAccount) => (
+            <option key={acc.id} value={acc.id}>
+              {acc.name}
+            </option>
+          ))}
+        </select>
+
+        {/* Status Filter */}
+        <select
+          value={filters.status || 'all'}
+          onChange={(e) => updateFilter('status', e.target.value as CampaignFilters['status'])}
+          className="rounded-lg border bg-background px-3 py-2 text-sm"
+        >
+          <option value="all">All Status</option>
+          <option value="active">Active</option>
+          <option value="paused">Paused</option>
+          <option value="deleted">Deleted</option>
+        </select>
+
+        {/* Date From */}
+        <div className="flex items-center gap-1">
+          <span className="text-sm text-muted-foreground">From:</span>
+          <input
+            type="date"
+            value={filters.from || ''}
+            onChange={(e) => updateFilter('from', e.target.value)}
+            className="rounded-lg border bg-background px-3 py-2 text-sm"
+          />
+        </div>
+
+        {/* Date To */}
+        <div className="flex items-center gap-1">
+          <span className="text-sm text-muted-foreground">To:</span>
+          <input
+            type="date"
+            value={filters.to || ''}
+            onChange={(e) => updateFilter('to', e.target.value)}
+            className="rounded-lg border bg-background px-3 py-2 text-sm"
+          />
+        </div>
+
+        {/* Clear filters */}
+        {(filters.from || filters.to || filters.status !== 'all' || filters.sourceAccountId) && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              setFilters({
+                status: 'all',
+                sortBy: filters.sortBy,
+                sortOrder: filters.sortOrder,
+              })
+            }
+          >
+            Clear Filters
+          </Button>
+        )}
+      </motion.div>
 
       {/* Stats Summary */}
       <motion.div
@@ -160,7 +264,7 @@ export function Campaigns() {
               { label: 'Total Campaigns', value: campaigns.length },
               { label: 'Active', value: campaigns.filter((c: Campaign) => c.status === 'active').length },
               { label: 'Paused', value: campaigns.filter((c: Campaign) => c.status === 'paused').length },
-              { label: 'Total Spend', value: formatCurrency(campaigns.reduce((sum: number, c: Campaign) => sum + (c.spend || 0), 0)) },
+              { label: 'Total Spend', value: formatCurrency(campaigns.reduce((sum: number, c: Campaign) => sum + c.spend, 0)) },
             ].map((stat, i) => (
               <div key={i} className="rounded-lg border bg-card p-4">
                 <p className="text-sm text-muted-foreground">{stat.label}</p>

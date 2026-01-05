@@ -7,6 +7,7 @@ import {
   type ListWidgetsOptions,
   type BlacklistResult,
   type BidAdjustmentResult,
+  type CampaignStats,
 } from '../interface.js'
 import { TRAFFIC_SOURCE_CONFIG } from '../config.js'
 import { makeRequest, buildUrl, extractMetrics } from '../utils/request-helpers.js'
@@ -93,8 +94,65 @@ export class TaboolaSource extends BaseTrafficSource {
         { accessToken: this.accessToken! }
       )
 
-      return response.results.map((c) => this.normalizeCampaign(c))
+      // Fetch statistics for each campaign in parallel (with rate limiting)
+      const campaignsWithStats = await Promise.all(
+        response.results.map(async (campaign) => {
+          try {
+            const stats = await this.getCampaignStatistics(String(campaign.id), options.from, options.to)
+            return this.normalizeCampaign(campaign, stats)
+          } catch (error) {
+            logger.warn({ campaignId: campaign.id, error }, 'Failed to fetch Taboola campaign stats')
+            return this.normalizeCampaign(campaign)
+          }
+        })
+      )
+
+      return campaignsWithStats
     })
+  }
+
+  /**
+   * Fetch campaign performance statistics from Taboola
+   * Uses campaign-summary reports endpoint
+   */
+  async getCampaignStatistics(campaignId: string, from?: string, to?: string): Promise<CampaignStats> {
+    await this.ensureAuthenticated()
+    await this.rateLimiter.acquire()
+
+    // Default to last 30 days if no date range provided
+    const toDate = to || new Date().toISOString().split('T')[0]
+    const fromDate = from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+    const url = buildUrl(config.baseUrl, `/${this.accountId}/reports/campaign-summary/dimensions/campaign_breakdown`, {
+      campaign: campaignId,
+      start_date: fromDate,
+      end_date: toDate,
+    })
+
+    logger.debug({ url, campaignId, from: fromDate, to: toDate }, 'Taboola getCampaignStatistics request')
+
+    try {
+      const response = await makeRequest<{ results: TaboolaReportResult[] }>(
+        url,
+        { accessToken: this.accessToken! }
+      )
+
+      // Sum up stats from all results (usually just one for campaign-level)
+      const stats = response.results.reduce<CampaignStats>(
+        (acc, r) => ({
+          spend: acc.spend + (r.spent || 0),
+          impressions: acc.impressions + (r.impressions || 0),
+          clicks: acc.clicks + (r.clicks || 0),
+          conversions: acc.conversions + (r.conversions || 0),
+        }),
+        { spend: 0, impressions: 0, clicks: 0, conversions: 0 }
+      )
+
+      return stats
+    } catch (error) {
+      logger.warn({ campaignId, error }, 'Failed to fetch Taboola performance stats, returning zeros')
+      return { spend: 0, impressions: 0, clicks: 0, conversions: 0 }
+    }
   }
 
   async getCampaign(campaignId: string): Promise<NormalizedCampaign> {
@@ -225,7 +283,9 @@ export class TaboolaSource extends BaseTrafficSource {
     }
   }
 
-  private normalizeCampaign(campaign: TaboolaCampaign): NormalizedCampaign {
+  private normalizeCampaign(campaign: TaboolaCampaign, stats?: CampaignStats): NormalizedCampaign {
+    // Use fetched stats if available, otherwise fall back to campaign-level data
+    const metricsSource = stats || campaign
     return {
       id: `taboola-${campaign.id}`,
       externalId: String(campaign.id),
@@ -236,7 +296,7 @@ export class TaboolaSource extends BaseTrafficSource {
       enabled: campaign.is_active,
       budget: campaign.spending_limit || 'unlimited',
       bid: campaign.cpc || 0,
-      metrics: extractMetrics(campaign),
+      metrics: extractMetrics(metricsSource),
       createdAt: campaign.start_date || new Date().toISOString(),
       updatedAt: campaign.last_modified || campaign.start_date || new Date().toISOString(),
     }
@@ -296,4 +356,13 @@ interface TaboolaWidget {
   clicks?: number
   conversions?: number
   cpc?: number
+}
+
+interface TaboolaReportResult {
+  campaign?: string
+  campaign_name?: string
+  spent?: number
+  impressions?: number
+  clicks?: number
+  conversions?: number
 }

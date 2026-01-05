@@ -73,7 +73,7 @@ describe('useCampaigns', () => {
         json: () => Promise.resolve({ data: [] }),
       })
 
-      const { result } = renderHook(() => useCampaigns('source-123'), {
+      const { result } = renderHook(() => useCampaigns({ sourceAccountId: 'source-123' }), {
         wrapper: createWrapper(),
       })
 
@@ -88,7 +88,7 @@ describe('useCampaigns', () => {
     it('should use correct query key with sourceAccountId', () => {
       mockFetch.mockImplementation(() => new Promise(() => {}))
 
-      const { result } = renderHook(() => useCampaigns('source-123'), {
+      const { result } = renderHook(() => useCampaigns({ sourceAccountId: 'source-123' }), {
         wrapper: createWrapper(),
       })
 

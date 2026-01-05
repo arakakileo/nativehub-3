@@ -23,12 +23,24 @@ export interface AuthResult {
 }
 
 /**
+ * Campaign statistics returned from stats endpoints
+ */
+export interface CampaignStats {
+  spend: number
+  impressions: number
+  clicks: number
+  conversions: number
+}
+
+/**
  * Options for listing campaigns
  */
 export interface ListCampaignsOptions {
   status?: 'active' | 'paused' | 'deleted' | 'all'
   page?: number
   perPage?: number
+  from?: string // ISO date string for date range start
+  to?: string // ISO date string for date range end
 }
 
 /**

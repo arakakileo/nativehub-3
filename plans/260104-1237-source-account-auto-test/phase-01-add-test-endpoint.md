@@ -10,8 +10,8 @@
 |-------|-------|
 | Date | 2026-01-04 |
 | Priority | P1 |
-| Implementation | pending |
-| Review | pending |
+| Implementation | ✅ done |
+| Review | ✅ done |
 | Effort | 30min |
 
 ## Requirements
@@ -49,14 +49,14 @@ export function useTestSourceAccount() {
 ```
 
 ## Todo List
-- [ ] Add testSourceAccount to api.ts
-- [ ] Add useTestSourceAccount hook
-- [ ] Verify TypeScript compiles
+- [x] Add testSourceAccount to api.ts
+- [x] Add useTestSourceAccount hook
+- [x] Verify TypeScript compiles
 
 ## Success Criteria
-- [ ] API method exists and typed correctly
-- [ ] Hook exported from useSourceAccounts.ts
-- [ ] Build passes
+- [x] API method exists and typed correctly
+- [x] Hook exported from useSourceAccounts.ts
+- [x] Build passes
 
 ## Next Steps
 → Phase 02: Integrate auto-test in create flow

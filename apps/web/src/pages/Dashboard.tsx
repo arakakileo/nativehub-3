@@ -27,13 +27,19 @@ export function Dashboard() {
 
   const roi = metrics.spend > 0 ? ((metrics.conversions * 50 - metrics.spend) / metrics.spend) * 100 : 0
 
+  // Get source name from campaign
+  const getSourceFromCampaign = (campaign: Campaign) => {
+    const account = accounts.find((a: SourceAccount) => a.id === campaign.sourceAccountId)
+    return account?.sourceId || 'unknown'
+  }
+
   const columns = [
     {
       key: 'name',
       header: 'Campaign',
       render: (c: Campaign) => (
         <div className="flex items-center gap-3">
-          <span className={`h-2 w-2 rounded-full ${getSourceColor(c.source)}`} />
+          <span className={`h-2 w-2 rounded-full ${getSourceColor(getSourceFromCampaign(c))}`} />
           <span className="font-medium">{c.name}</span>
         </div>
       ),

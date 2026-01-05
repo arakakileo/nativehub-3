@@ -81,8 +81,16 @@ class ApiClient {
     this.request(`/api/v1/source-accounts/${id}/test`, { method: 'POST' })
 
   // Campaigns
-  getCampaigns = (sourceAccountId?: string): Promise<Campaign[]> => {
-    const query = sourceAccountId ? `?sourceAccountId=${sourceAccountId}` : ''
+  getCampaigns = (filters?: CampaignFilters): Promise<Campaign[]> => {
+    const params = new URLSearchParams()
+    if (filters?.sourceAccountId) params.set('sourceAccountId', filters.sourceAccountId)
+    if (filters?.from) params.set('from', filters.from)
+    if (filters?.to) params.set('to', filters.to)
+    if (filters?.status) params.set('status', filters.status)
+    if (filters?.sortBy) params.set('sortBy', filters.sortBy)
+    if (filters?.sortOrder) params.set('sortOrder', filters.sortOrder)
+
+    const query = params.toString() ? `?${params.toString()}` : ''
     return this.request(`/api/v1/campaigns${query}`)
   }
 
@@ -159,24 +167,32 @@ export interface CreateSourceAccountInput {
   password?: string
 }
 
+export interface CampaignFilters {
+  sourceAccountId?: string
+  from?: string
+  to?: string
+  status?: 'active' | 'paused' | 'deleted' | 'all'
+  sortBy?: 'name' | 'spend' | 'conversions' | 'clicks' | 'cpc'
+  sortOrder?: 'asc' | 'desc'
+}
+
 export interface Campaign {
   id: string
   sourceAccountId: string
-  externalId: string
+  externalCampaignId: string
   name: string
   status: 'active' | 'paused' | 'deleted'
-  source: string
-  bidAmount?: number
-  budget?: number
-  spend?: number
-  impressions?: number
-  clicks?: number
-  conversions?: number
-  ctr?: number
-  cpc?: number
-  cpa?: number
-  createdAt: string
-  updatedAt: string
+  enabled: boolean
+  budget?: string | null
+  bid?: string
+  spend: number
+  impressions: number
+  clicks: number
+  conversions: number
+  ctr: number
+  cpc: number
+  cpa: number
+  syncedAt: string
 }
 
 export interface BlacklistEntry {

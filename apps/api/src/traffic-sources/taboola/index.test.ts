@@ -94,6 +94,7 @@ describe('TaboolaSource', () => {
     })
 
     it('should fetch and normalize campaigns', async () => {
+      // Mock campaigns list
       vi.mocked(makeRequest).mockResolvedValueOnce({
         results: [
           {
@@ -111,6 +112,10 @@ describe('TaboolaSource', () => {
           },
         ],
       })
+      // Mock statistics call
+      vi.mocked(makeRequest).mockResolvedValueOnce({
+        results: [{ spent: 125, impressions: 50000, clicks: 350, conversions: 12 }],
+      })
 
       const campaigns = await source.getCampaigns()
 
@@ -127,6 +132,7 @@ describe('TaboolaSource', () => {
     })
 
     it('should calculate metrics correctly', async () => {
+      // Mock campaigns list
       vi.mocked(makeRequest).mockResolvedValueOnce({
         results: [
           {
@@ -135,13 +141,13 @@ describe('TaboolaSource', () => {
             status: 'RUNNING',
             is_active: true,
             cpc: 0.5,
-            spent: 100,
-            impressions: 10000,
-            clicks: 200,
-            conversions: 4,
             start_date: '2026-01-01',
           },
         ],
+      })
+      // Mock statistics call with the metrics we expect
+      vi.mocked(makeRequest).mockResolvedValueOnce({
+        results: [{ spent: 100, impressions: 10000, clicks: 200, conversions: 4 }],
       })
 
       const campaigns = await source.getCampaigns()
@@ -158,6 +164,7 @@ describe('TaboolaSource', () => {
     })
 
     it('should handle different campaign statuses', async () => {
+      // Mock campaigns list
       vi.mocked(makeRequest).mockResolvedValueOnce({
         results: [
           { id: '1', name: 'Active', status: 'RUNNING', is_active: true, cpc: 0.5, start_date: '2026-01-01' },
@@ -167,6 +174,8 @@ describe('TaboolaSource', () => {
           { id: '5', name: 'Unknown', status: 'NEW', is_active: true, cpc: 0.5, start_date: '2026-01-01' },
         ],
       })
+      // Mock statistics calls for each campaign
+      vi.mocked(makeRequest).mockResolvedValue({ results: [] })
 
       const campaigns = await source.getCampaigns()
 

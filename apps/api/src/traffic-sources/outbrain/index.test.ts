@@ -91,6 +91,7 @@ describe('OutbrainSource', () => {
     })
 
     it('should fetch and normalize campaigns', async () => {
+      // Mock campaigns list
       vi.mocked(makeRequest).mockResolvedValueOnce({
         campaigns: [
           {
@@ -100,13 +101,13 @@ describe('OutbrainSource', () => {
             enabled: true,
             budget: { amount: 1000, currency: 'USD' },
             cpc: 0.45,
-            spend: 250,
-            impressions: 100000,
-            clicks: 550,
-            conversions: 18,
             creationTime: '2026-01-01T00:00:00Z',
           },
         ],
+      })
+      // Mock statistics call
+      vi.mocked(makeRequest).mockResolvedValueOnce({
+        results: [{ spend: 250, impressions: 100000, clicks: 550, conversions: 18 }],
       })
 
       const campaigns = await source.getCampaigns()
@@ -124,6 +125,7 @@ describe('OutbrainSource', () => {
     })
 
     it('should calculate metrics correctly', async () => {
+      // Mock campaigns list
       vi.mocked(makeRequest).mockResolvedValueOnce({
         campaigns: [
           {
@@ -132,13 +134,13 @@ describe('OutbrainSource', () => {
             status: 'RUNNING',
             enabled: true,
             cpc: 0.5,
-            spend: 100,
-            impressions: 10000,
-            clicks: 200,
-            conversions: 4,
             creationTime: '2026-01-01',
           },
         ],
+      })
+      // Mock statistics call with metrics
+      vi.mocked(makeRequest).mockResolvedValueOnce({
+        results: [{ spend: 100, impressions: 10000, clicks: 200, conversions: 4 }],
       })
 
       const campaigns = await source.getCampaigns()
@@ -155,6 +157,7 @@ describe('OutbrainSource', () => {
     })
 
     it('should handle different campaign statuses', async () => {
+      // Mock campaigns list
       vi.mocked(makeRequest).mockResolvedValueOnce({
         campaigns: [
           { id: '1', name: 'Running', status: 'RUNNING', enabled: true, creationTime: '2026-01-01' },
@@ -164,6 +167,8 @@ describe('OutbrainSource', () => {
           { id: '5', name: 'Pending', status: 'PENDING', enabled: true, creationTime: '2026-01-01' },
         ],
       })
+      // Mock statistics calls for each campaign
+      vi.mocked(makeRequest).mockResolvedValue({ results: [] })
 
       const campaigns = await source.getCampaigns()
 

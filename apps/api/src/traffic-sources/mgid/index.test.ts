@@ -76,6 +76,7 @@ describe('MgidSource', () => {
     })
 
     it('should fetch and normalize campaigns', async () => {
+      // Mock campaigns list
       vi.mocked(makeRequest).mockResolvedValueOnce({
         campaigns: [
           {
@@ -84,13 +85,13 @@ describe('MgidSource', () => {
             status: 'active',
             daily_budget: 200,
             cpc: 0.25,
-            spent: 85,
-            impressions: 40000,
-            clicks: 340,
-            conversions: 8,
             created_at: '2026-01-01T00:00:00Z',
           },
         ],
+      })
+      // Mock statistics call
+      vi.mocked(makeRequest).mockResolvedValueOnce({
+        spent: 85, impressions: 40000, clicks: 340, conversions: 8,
       })
 
       const campaigns = await source.getCampaigns()
@@ -108,6 +109,7 @@ describe('MgidSource', () => {
     })
 
     it('should calculate metrics correctly', async () => {
+      // Mock campaigns list
       vi.mocked(makeRequest).mockResolvedValueOnce({
         campaigns: [
           {
@@ -115,13 +117,13 @@ describe('MgidSource', () => {
             name: 'Test',
             status: 'active',
             cpc: 0.5,
-            spent: 100,
-            impressions: 10000,
-            clicks: 200,
-            conversions: 4,
             created_at: '2026-01-01',
           },
         ],
+      })
+      // Mock statistics call with metrics
+      vi.mocked(makeRequest).mockResolvedValueOnce({
+        spent: 100, impressions: 10000, clicks: 200, conversions: 4,
       })
 
       const campaigns = await source.getCampaigns()
@@ -138,6 +140,7 @@ describe('MgidSource', () => {
     })
 
     it('should handle different campaign statuses', async () => {
+      // Mock campaigns list
       vi.mocked(makeRequest).mockResolvedValueOnce({
         campaigns: [
           { id: 1, name: 'Active', status: 'active', created_at: '2026-01-01' },
@@ -147,6 +150,8 @@ describe('MgidSource', () => {
           { id: 5, name: 'New', status: 'new', created_at: '2026-01-01' },
         ],
       })
+      // Mock statistics calls for each campaign
+      vi.mocked(makeRequest).mockResolvedValue({ spent: 0, impressions: 0, clicks: 0, conversions: 0 })
 
       const campaigns = await source.getCampaigns()
 

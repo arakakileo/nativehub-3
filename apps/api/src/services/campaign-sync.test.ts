@@ -57,9 +57,9 @@ describe('CampaignSyncService', () => {
     })
     testAccountId = account.id
 
-    // Mark account as active
+    // Mark account as connected (syncAll queries for 'connected' status)
     await db.update(sourceAccounts)
-      .set({ status: 'active' })
+      .set({ status: 'connected' })
       .where(eq(sourceAccounts.id, testAccountId))
   })
 
@@ -200,7 +200,7 @@ describe('CampaignSyncService', () => {
         clientId: 'client-2',
       })
       await db.update(sourceAccounts)
-        .set({ status: 'active' })
+        .set({ status: 'connected' })
         .where(eq(sourceAccounts.id, account2.id))
 
       mockGetAuthenticatedSource.mockResolvedValue({
@@ -242,7 +242,7 @@ describe('CampaignSyncService', () => {
         clientId: 'client-2',
       })
       await db.update(sourceAccounts)
-        .set({ status: 'active' })
+        .set({ status: 'connected' })
         .where(eq(sourceAccounts.id, account2.id))
 
       // First call fails, second succeeds

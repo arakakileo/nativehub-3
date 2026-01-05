@@ -7,6 +7,7 @@ import {
   type ListWidgetsOptions,
   type BlacklistResult,
   type BidAdjustmentResult,
+  type CampaignStats,
 } from '../interface.js'
 import { TRAFFIC_SOURCE_CONFIG } from '../config.js'
 import { makeRequest, buildUrl, extractMetrics } from '../utils/request-helpers.js'
@@ -75,8 +76,64 @@ export class MgidSource extends BaseTrafficSource {
         }
       )
 
-      return response.campaigns.map((c) => this.normalizeCampaign(c))
+      // Fetch statistics for each campaign in parallel (with rate limiting)
+      const campaignsWithStats = await Promise.all(
+        response.campaigns.map(async (campaign) => {
+          try {
+            const stats = await this.getCampaignStatistics(String(campaign.id), options.from, options.to)
+            return this.normalizeCampaign(campaign, stats)
+          } catch (error) {
+            logger.warn({ campaignId: campaign.id, error }, 'Failed to fetch MGID campaign stats')
+            return this.normalizeCampaign(campaign)
+          }
+        })
+      )
+
+      return campaignsWithStats
     })
+  }
+
+  /**
+   * Fetch campaign performance statistics from MGID
+   * Uses campaign stats endpoint
+   */
+  async getCampaignStatistics(campaignId: string, from?: string, to?: string): Promise<CampaignStats> {
+    await this.ensureAuthenticated()
+    await this.rateLimiter.acquire()
+
+    // Default to last 30 days if no date range provided
+    const toDate = to || new Date().toISOString().split('T')[0]
+    const fromDate = from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+    const url = buildUrl(config.baseUrl, `/clients/${this.clientId}/campaigns/${campaignId}/stats`, {
+      date_from: fromDate,
+      date_to: toDate,
+    })
+
+    logger.debug({ url, campaignId, from: fromDate, to: toDate }, 'MGID getCampaignStatistics request')
+
+    try {
+      const response = await makeRequest<MgidStatsResponse>(
+        url,
+        {
+          headers: {
+            'X-API-KEY': this.accessToken!,
+          },
+        }
+      )
+
+      // Extract stats - MGID uses 'cost' for spend
+      const data = response.data || response
+      return {
+        spend: data.cost || data.spend || data.spent || 0,
+        impressions: data.impressions || data.imps || 0,
+        clicks: data.clicks || 0,
+        conversions: data.conversions || 0,
+      }
+    } catch (error) {
+      logger.warn({ campaignId, error }, 'Failed to fetch MGID performance stats, returning zeros')
+      return { spend: 0, impressions: 0, clicks: 0, conversions: 0 }
+    }
   }
 
   async getCampaign(campaignId: string): Promise<NormalizedCampaign> {
@@ -218,7 +275,9 @@ export class MgidSource extends BaseTrafficSource {
     }
   }
 
-  private normalizeCampaign(campaign: MgidCampaign): NormalizedCampaign {
+  private normalizeCampaign(campaign: MgidCampaign, stats?: CampaignStats): NormalizedCampaign {
+    // Use fetched stats if available, otherwise fall back to campaign-level data
+    const metricsSource = stats || campaign
     return {
       id: `mgid-${campaign.id}`,
       externalId: String(campaign.id),
@@ -229,7 +288,7 @@ export class MgidSource extends BaseTrafficSource {
       enabled: campaign.status === 'active',
       budget: campaign.daily_budget || campaign.total_budget || 'unlimited',
       bid: campaign.cpc || 0,
-      metrics: extractMetrics(campaign),
+      metrics: extractMetrics(metricsSource),
       createdAt: campaign.created_at || new Date().toISOString(),
       updatedAt: campaign.updated_at || campaign.created_at || new Date().toISOString(),
     }
@@ -292,4 +351,23 @@ interface MgidWidget {
   clicks?: number
   conversions?: number
   cpc?: number
+}
+
+interface MgidStatsResponse {
+  data?: {
+    cost?: number
+    spend?: number
+    spent?: number
+    impressions?: number
+    imps?: number
+    clicks?: number
+    conversions?: number
+  }
+  cost?: number
+  spend?: number
+  spent?: number
+  impressions?: number
+  imps?: number
+  clicks?: number
+  conversions?: number
 }

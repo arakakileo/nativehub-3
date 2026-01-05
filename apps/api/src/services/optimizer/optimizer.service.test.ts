@@ -22,12 +22,15 @@ describe('OptimizerService', () => {
 
     // Create a test source account
     const { encrypted, iv } = encryptCredentials({ clientId: 'test', clientSecret: 'secret' })
+    // Convert Buffer to hex string for PGlite compatibility
+    const encryptedHex = encrypted.toString('hex')
+    const ivHex = iv.toString('hex')
     const [account] = await db.insert(sourceAccounts).values({
       userId: TEST_USER_ID,
       sourceId: 'revcontent',
       name: 'Test Account',
-      credentialsEncrypted: encrypted,
-      credentialsIv: iv,
+      credentialsEncrypted: encryptedHex,
+      credentialsIv: ivHex,
       status: 'connected',
     }).returning()
     testSourceAccountId = account.id

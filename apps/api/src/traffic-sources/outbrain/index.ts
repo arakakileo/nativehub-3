@@ -7,6 +7,7 @@ import {
   type ListWidgetsOptions,
   type BlacklistResult,
   type BidAdjustmentResult,
+  type CampaignStats,
 } from '../interface.js'
 import { TRAFFIC_SOURCE_CONFIG } from '../config.js'
 import { makeRequest, buildUrl, extractMetrics } from '../utils/request-helpers.js'
@@ -132,8 +133,66 @@ export class OutbrainSource extends BaseTrafficSource {
         }
       )
 
-      return response.campaigns.map((c) => this.normalizeCampaign(c))
+      // Fetch statistics for each campaign in parallel (with rate limiting)
+      const campaignsWithStats = await Promise.all(
+        response.campaigns.map(async (campaign) => {
+          try {
+            const stats = await this.getCampaignStatistics(campaign.id, options.from, options.to)
+            return this.normalizeCampaign(campaign, stats)
+          } catch (error) {
+            logger.warn({ campaignId: campaign.id, error }, 'Failed to fetch Outbrain campaign stats')
+            return this.normalizeCampaign(campaign)
+          }
+        })
+      )
+
+      return campaignsWithStats
     })
+  }
+
+  /**
+   * Fetch campaign performance statistics from Outbrain
+   * Uses performanceByContent endpoint and aggregates results
+   */
+  async getCampaignStatistics(campaignId: string, from?: string, to?: string): Promise<CampaignStats> {
+    await this.ensureAuthenticated()
+    await this.rateLimiter.acquire()
+
+    // Default to last 30 days if no date range provided
+    const toDate = to || new Date().toISOString().split('T')[0]
+    const fromDate = from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+    const url = buildUrl(config.baseUrl, `/marketers/${this.marketerId}/campaigns/${campaignId}/performanceByContent`, {
+      from: fromDate,
+      to: toDate,
+    })
+
+    logger.debug({ url, campaignId, from: fromDate, to: toDate }, 'Outbrain getCampaignStatistics request')
+
+    try {
+      const response = await makeRequest<{ results: OutbrainPerformanceResult[] }>(
+        url,
+        {
+          headers: {
+            'OB-TOKEN-V1': this.accessToken!,
+          },
+        }
+      )
+
+      // Aggregate content-level stats into campaign totals
+      return response.results.reduce<CampaignStats>(
+        (acc, r) => ({
+          spend: acc.spend + (r.spend || 0),
+          impressions: acc.impressions + (r.impressions || 0),
+          clicks: acc.clicks + (r.clicks || 0),
+          conversions: acc.conversions + (r.conversions || 0),
+        }),
+        { spend: 0, impressions: 0, clicks: 0, conversions: 0 }
+      )
+    } catch (error) {
+      logger.warn({ campaignId, error }, 'Failed to fetch Outbrain performance stats, returning zeros')
+      return { spend: 0, impressions: 0, clicks: 0, conversions: 0 }
+    }
   }
 
   async getCampaign(campaignId: string): Promise<NormalizedCampaign> {
@@ -285,7 +344,9 @@ export class OutbrainSource extends BaseTrafficSource {
     }
   }
 
-  private normalizeCampaign(campaign: OutbrainCampaign): NormalizedCampaign {
+  private normalizeCampaign(campaign: OutbrainCampaign, stats?: CampaignStats): NormalizedCampaign {
+    // Use fetched stats if available, otherwise fall back to campaign-level data
+    const metricsSource = stats || campaign
     return {
       id: `outbrain-${campaign.id}`,
       externalId: campaign.id,
@@ -296,7 +357,7 @@ export class OutbrainSource extends BaseTrafficSource {
       enabled: campaign.enabled,
       budget: campaign.budget?.amount || 'unlimited',
       bid: campaign.cpc || 0,
-      metrics: extractMetrics(campaign),
+      metrics: extractMetrics(metricsSource),
       createdAt: campaign.creationTime || new Date().toISOString(),
       updatedAt: campaign.lastModified || campaign.creationTime || new Date().toISOString(),
     }
@@ -359,4 +420,12 @@ interface OutbrainPublisher {
   clicks?: number
   conversions?: number
   cpc?: number
+}
+
+interface OutbrainPerformanceResult {
+  contentId?: string
+  spend?: number
+  impressions?: number
+  clicks?: number
+  conversions?: number
 }

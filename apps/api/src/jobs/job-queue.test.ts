@@ -9,6 +9,7 @@ vi.mock('pg-boss', () => {
     work: vi.fn().mockResolvedValue('worker-id'),
     schedule: vi.fn().mockResolvedValue(undefined),
     send: vi.fn().mockResolvedValue('test-job-id'),
+    createQueue: vi.fn().mockResolvedValue(undefined),
     getJobById: vi.fn().mockResolvedValue({
       id: 'test-job-id',
       name: 'sync-campaigns',

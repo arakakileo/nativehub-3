@@ -10,8 +10,8 @@
 |-------|-------|
 | Date | 2026-01-04 |
 | Priority | P1 |
-| Implementation | pending |
-| Review | pending |
+| Implementation | ✅ done |
+| Review | ✅ done |
 | Effort | 30min |
 
 ## Requirements
@@ -104,18 +104,20 @@ const handleSubmit = async (e: React.FormEvent) => {
 ```
 
 ## Todo List
-- [ ] Import useTestSourceAccount hook
-- [ ] Initialize testMutation
-- [ ] Update handleSubmit with chained calls
-- [ ] Update button loading state
-- [ ] Remove duplicate toast from useCreateSourceAccount hook
-- [ ] Test with real Outbrain credentials
+- [x] Import useTestSourceAccount hook
+- [x] Initialize testMutation
+- [x] Update handleSubmit with chained calls
+- [x] Update button loading state
+- [x] Remove duplicate toast from useCreateSourceAccount hook
+- [x] Test with real Outbrain credentials
+- [x] Add Test Connection button for pending accounts
 
 ## Success Criteria
-- [ ] Account auto-tests after creation
-- [ ] Status becomes `connected` on success
-- [ ] Sync button works immediately
-- [ ] Error shows warning toast, not error
+- [x] Account auto-tests after creation
+- [x] Status becomes `connected` on success
+- [x] Sync button works immediately
+- [x] Error shows warning toast, not error
+- [x] Manual test available for existing pending accounts
 
 ## Risk Assessment
 - **Low**: Test endpoint may fail due to invalid credentials → Handled with warning toast

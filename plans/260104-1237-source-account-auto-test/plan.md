@@ -1,12 +1,13 @@
 ---
 title: "Auto-Test Source Account Connection"
 description: "Auto-call test endpoint after account creation to enable sync"
-status: pending
+status: completed
 priority: P1
 effort: 1h
 branch: master
 tags: [frontend, source-accounts, fix]
 created: 2026-01-04
+completed: 2026-01-04
 ---
 
 # Auto-Test Source Account Connection
@@ -21,16 +22,17 @@ Auto-call `/test` endpoint after account creation to authenticate with traffic s
 
 | # | Phase | Status | Effort | Link |
 |---|-------|--------|--------|------|
-| 1 | Add Test Endpoint & Hook | pending | 30min | [phase-01](./phase-01-add-test-endpoint.md) |
-| 2 | Auto-Test After Create | pending | 30min | [phase-02](./phase-02-auto-test-flow.md) |
+| 1 | Add Test Endpoint & Hook | ✅ done | 30min | [phase-01](./phase-01-add-test-endpoint.md) |
+| 2 | Auto-Test After Create | ✅ done | 30min | [phase-02](./phase-02-auto-test-flow.md) |
 
-## Files to Modify
-- `apps/web/src/lib/api.ts` - Add testSourceAccount method
-- `apps/web/src/hooks/useSourceAccounts.ts` - Add useTestSourceAccount hook
-- `apps/web/src/pages/SourceAccounts.tsx` - Chain test after create
+## Files Modified
+- `apps/web/src/lib/api.ts` - Added testSourceAccount method
+- `apps/web/src/hooks/useSourceAccounts.ts` - Added useTestSourceAccount hook
+- `apps/web/src/pages/SourceAccounts.tsx` - Chained test after create, added Test Connection button
 
 ## Success Criteria
-- [ ] New account auto-tests connection after creation
-- [ ] Account status becomes `connected` on success
-- [ ] Sync works immediately after account creation
-- [ ] Error handling shows appropriate messages
+- [x] New account auto-tests connection after creation
+- [x] Account status becomes `connected` on success
+- [x] Sync works immediately after account creation
+- [x] Error handling shows appropriate messages
+- [x] Manual Test Connection button for existing pending accounts

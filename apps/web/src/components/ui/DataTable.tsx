@@ -3,7 +3,7 @@ import { cn } from '../../lib/utils'
 
 interface Column<T> {
   key: keyof T | string
-  header: string
+  header: string | (() => React.ReactNode)
   render?: (item: T) => React.ReactNode
   className?: string
 }
@@ -60,7 +60,7 @@ export function DataTable<T>({
                     col.className
                   )}
                 >
-                  {col.header}
+                  {typeof col.header === 'function' ? col.header() : col.header}
                 </th>
               ))}
             </tr>
