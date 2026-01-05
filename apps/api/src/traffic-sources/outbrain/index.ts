@@ -149,77 +149,100 @@ export class OutbrainSource extends BaseTrafficSource {
 
       logger.info({ campaignCount: response.campaigns.length }, 'Outbrain campaigns fetched')
 
-      // Fetch statistics for each campaign in parallel (with rate limiting)
-      let statsFailures = 0
-      const campaignsWithStats = await Promise.all(
-        response.campaigns.map(async (campaign) => {
-          try {
-            const stats = await this.getCampaignStatistics(campaign.id, options.from, options.to)
-            return this.normalizeCampaign(campaign, stats)
-          } catch (error) {
-            statsFailures++
-            logger.warn({ campaignId: campaign.id, campaignName: campaign.name, error: error instanceof Error ? error.message : error }, 'Failed to fetch Outbrain campaign stats')
-            return this.normalizeCampaign(campaign)
-          }
-        })
-      )
+      // Fetch ALL campaign stats in ONE call using periodic endpoint (more reliable)
+      const statsMap = await this.getAllCampaignStatistics(options.from, options.to)
 
-      // Warn if all stats fetches failed - likely a configuration issue
-      if (statsFailures === response.campaigns.length && response.campaigns.length > 0) {
-        logger.error({
-          marketerId: this.marketerId,
-          campaignCount: response.campaigns.length,
-          statsFailures
-        }, 'All Outbrain campaign stats fetches failed - check marketerId and API permissions')
-      }
+      // Normalize campaigns with stats from the map
+      const campaignsWithStats = response.campaigns.map((campaign) => {
+        const stats = statsMap.get(campaign.id)
+        if (!stats) {
+          logger.debug({ campaignId: campaign.id, campaignName: campaign.name }, 'No stats found for campaign')
+        }
+        return this.normalizeCampaign(campaign, stats)
+      })
+
+      const withStats = campaignsWithStats.filter((c) => c.metrics.spend > 0 || c.metrics.impressions > 0).length
+      logger.info({
+        totalCampaigns: response.campaigns.length,
+        withStats,
+        statsMapSize: statsMap.size
+      }, 'Outbrain campaigns normalized with stats')
 
       return campaignsWithStats
     })
   }
 
   /**
-   * Fetch campaign performance statistics from Outbrain
-   * Uses performanceByContent endpoint and aggregates results
-   * @throws Error if API call fails (don't silently return zeros)
+   * Fetch ALL campaign performance statistics from Outbrain in ONE call
+   * Uses the periodic campaigns endpoint which is more reliable than performanceByContent
+   * Returns a Map of campaignId -> CampaignStats
    */
-  async getCampaignStatistics(campaignId: string, from?: string, to?: string): Promise<CampaignStats> {
-    await this.ensureAuthenticated()
-    this.validateMarketerId()
+  private async getAllCampaignStatistics(from?: string, to?: string): Promise<Map<string, CampaignStats>> {
     await this.rateLimiter.acquire()
 
     // Default to last 30 days if no date range provided
     const toDate = to || new Date().toISOString().split('T')[0]
     const fromDate = from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
-    const url = buildUrl(config.baseUrl, `/marketers/${this.marketerId}/campaigns/${campaignId}/performanceByContent`, {
+    // Use the periodic campaigns endpoint - ONE call for ALL campaigns
+    const url = buildUrl(config.baseUrl, `/reports/marketers/${this.marketerId}/campaigns/periodic`, {
       from: fromDate,
       to: toDate,
+      breakdown: 'daily', // Get daily breakdown which aggregates per campaign
+      sort: '-spend', // Sort by spend descending (includes direction char to avoid 500 errors)
+      limit: 1000, // Get all campaigns
     })
 
-    logger.debug({ url, campaignId, from: fromDate, to: toDate }, 'Outbrain getCampaignStatistics request')
+    logger.info({ url, from: fromDate, to: toDate }, 'Outbrain getAllCampaignStatistics request')
 
-    const response = await makeRequest<{ results: OutbrainPerformanceResult[] }>(
-      url,
-      {
-        headers: {
-          'OB-TOKEN-V1': this.accessToken!,
-        },
+    const statsMap = new Map<string, CampaignStats>()
+
+    try {
+      const response = await makeRequest<{ results: OutbrainPeriodicResult[] }>(
+        url,
+        {
+          headers: {
+            'OB-TOKEN-V1': this.accessToken!,
+          },
+        }
+      )
+
+      logger.info({ resultsCount: response.results?.length || 0 }, 'Outbrain periodic stats received')
+
+      // Aggregate results by campaign ID (results may have multiple entries per campaign for daily breakdown)
+      for (const result of response.results || []) {
+        const campaignId = result.campaignId
+        if (!campaignId) continue
+
+        const existing = statsMap.get(campaignId) || { spend: 0, impressions: 0, clicks: 0, conversions: 0 }
+        statsMap.set(campaignId, {
+          spend: existing.spend + (result.spend || 0),
+          impressions: existing.impressions + (result.impressions || 0),
+          clicks: existing.clicks + (result.clicks || 0),
+          conversions: existing.conversions + (result.conversions || 0),
+        })
       }
-    )
 
-    // Aggregate content-level stats into campaign totals
-    const stats = response.results.reduce<CampaignStats>(
-      (acc, r) => ({
-        spend: acc.spend + (r.spend || 0),
-        impressions: acc.impressions + (r.impressions || 0),
-        clicks: acc.clicks + (r.clicks || 0),
-        conversions: acc.conversions + (r.conversions || 0),
-      }),
-      { spend: 0, impressions: 0, clicks: 0, conversions: 0 }
-    )
+      logger.info({ campaignsWithStats: statsMap.size }, 'Outbrain stats aggregated by campaign')
+    } catch (error) {
+      logger.error({ error: error instanceof Error ? error.message : error }, 'Failed to fetch Outbrain periodic stats')
+      // Return empty map - campaigns will show 0 metrics
+    }
 
-    logger.debug({ campaignId, stats, resultsCount: response.results.length }, 'Outbrain stats aggregated')
-    return stats
+    return statsMap
+  }
+
+  /**
+   * Fetch campaign performance statistics from Outbrain for a single campaign
+   * Fallback method - prefer getAllCampaignStatistics for batch fetching
+   * @throws Error if API call fails (don't silently return zeros)
+   */
+  async getCampaignStatistics(campaignId: string, from?: string, to?: string): Promise<CampaignStats> {
+    await this.ensureAuthenticated()
+    this.validateMarketerId()
+
+    const statsMap = await this.getAllCampaignStatistics(from, to)
+    return statsMap.get(campaignId) || { spend: 0, impressions: 0, clicks: 0, conversions: 0 }
   }
 
   async getCampaign(campaignId: string): Promise<NormalizedCampaign> {
@@ -492,4 +515,18 @@ interface OutbrainPerformanceResult {
   impressions?: number
   clicks?: number
   conversions?: number
+}
+
+// Response from /reports/marketers/{marketer}/campaigns/periodic endpoint
+interface OutbrainPeriodicResult {
+  campaignId?: string
+  campaignName?: string
+  fromDate?: string
+  toDate?: string
+  spend?: number
+  impressions?: number
+  clicks?: number
+  conversions?: number
+  cpc?: number
+  ctr?: number
 }

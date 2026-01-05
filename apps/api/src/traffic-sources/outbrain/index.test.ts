@@ -105,9 +105,9 @@ describe('OutbrainSource', () => {
           },
         ],
       })
-      // Mock statistics call
+      // Mock periodic stats call (ONE call for ALL campaigns)
       vi.mocked(makeRequest).mockResolvedValueOnce({
-        results: [{ spend: 250, impressions: 100000, clicks: 550, conversions: 18 }],
+        results: [{ campaignId: 'ob-camp-123', spend: 250, impressions: 100000, clicks: 550, conversions: 18 }],
       })
 
       const campaigns = await source.getCampaigns()
@@ -138,9 +138,9 @@ describe('OutbrainSource', () => {
           },
         ],
       })
-      // Mock statistics call with metrics
+      // Mock periodic stats call with metrics (includes campaignId)
       vi.mocked(makeRequest).mockResolvedValueOnce({
-        results: [{ spend: 100, impressions: 10000, clicks: 200, conversions: 4 }],
+        results: [{ campaignId: 'camp-123', spend: 100, impressions: 10000, clicks: 200, conversions: 4 }],
       })
 
       const campaigns = await source.getCampaigns()
@@ -172,8 +172,8 @@ describe('OutbrainSource', () => {
           { id: '5', name: 'Pending', enabled: true, liveStatus: { campaignOnAir: false, onAirReason: 'PENDING_APPROVAL' }, creationTime: '2026-01-01' },
         ],
       })
-      // Mock statistics calls for each campaign
-      vi.mocked(makeRequest).mockResolvedValue({ results: [] })
+      // Mock periodic stats call (ONE call for ALL campaigns - returns empty for this test)
+      vi.mocked(makeRequest).mockResolvedValueOnce({ results: [] })
 
       const campaigns = await source.getCampaigns()
 
