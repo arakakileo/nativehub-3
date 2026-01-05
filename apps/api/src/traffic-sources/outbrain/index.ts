@@ -152,11 +152,12 @@ export class OutbrainSource extends BaseTrafficSource {
       // Debug: Log first campaign to see raw status value
       if (response.campaigns.length > 0) {
         const firstCampaign = response.campaigns[0]
-        logger.debug({
+        logger.info({
           campaignId: firstCampaign.id,
           rawStatus: firstCampaign.status,
           enabled: firstCampaign.enabled,
-          name: firstCampaign.name
+          name: firstCampaign.name,
+          mappedStatus: this.mapStatus(firstCampaign.status)
         }, 'Outbrain campaign raw data sample')
       }
 
