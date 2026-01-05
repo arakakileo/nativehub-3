@@ -91,14 +91,14 @@ describe('OutbrainSource', () => {
     })
 
     it('should fetch and normalize campaigns', async () => {
-      // Mock campaigns list
+      // Mock campaigns list - Outbrain uses liveStatus instead of status
       vi.mocked(makeRequest).mockResolvedValueOnce({
         campaigns: [
           {
             id: 'ob-camp-123',
             name: 'Outbrain Campaign',
-            status: 'RUNNING',
             enabled: true,
+            liveStatus: { campaignOnAir: true, onAirReason: 'ACTIVE' },
             budget: { amount: 1000, currency: 'USD' },
             cpc: 0.45,
             creationTime: '2026-01-01T00:00:00Z',
@@ -125,14 +125,14 @@ describe('OutbrainSource', () => {
     })
 
     it('should calculate metrics correctly', async () => {
-      // Mock campaigns list
+      // Mock campaigns list - Outbrain uses liveStatus instead of status
       vi.mocked(makeRequest).mockResolvedValueOnce({
         campaigns: [
           {
             id: 'camp-123',
             name: 'Test',
-            status: 'RUNNING',
             enabled: true,
+            liveStatus: { campaignOnAir: true },
             cpc: 0.5,
             creationTime: '2026-01-01',
           },
@@ -156,15 +156,20 @@ describe('OutbrainSource', () => {
       })
     })
 
-    it('should handle different campaign statuses', async () => {
-      // Mock campaigns list
+    it('should handle different campaign statuses using liveStatus', async () => {
+      // Mock campaigns list - Outbrain uses liveStatus.campaignOnAir and liveStatus.onAirReason
       vi.mocked(makeRequest).mockResolvedValueOnce({
         campaigns: [
-          { id: '1', name: 'Running', status: 'RUNNING', enabled: true, creationTime: '2026-01-01' },
-          { id: '2', name: 'Live', status: 'LIVE', enabled: true, creationTime: '2026-01-01' },
-          { id: '3', name: 'Paused', status: 'PAUSED', enabled: false, creationTime: '2026-01-01' },
-          { id: '4', name: 'Rejected', status: 'REJECTED', enabled: false, creationTime: '2026-01-01' },
-          { id: '5', name: 'Pending', status: 'PENDING', enabled: true, creationTime: '2026-01-01' },
+          // Active: campaignOnAir = true
+          { id: '1', name: 'Active', enabled: true, liveStatus: { campaignOnAir: true, onAirReason: 'ACTIVE' }, creationTime: '2026-01-01' },
+          // Paused: CAMPAIGN_DISABLED
+          { id: '2', name: 'Disabled', enabled: false, liveStatus: { campaignOnAir: false, onAirReason: 'CAMPAIGN_DISABLED' }, creationTime: '2026-01-01' },
+          // Paused: CAMPAIGN_PAUSED
+          { id: '3', name: 'Paused', enabled: false, liveStatus: { campaignOnAir: false, onAirReason: 'CAMPAIGN_PAUSED' }, creationTime: '2026-01-01' },
+          // Deleted: CAMPAIGN_REJECTED
+          { id: '4', name: 'Rejected', enabled: false, liveStatus: { campaignOnAir: false, onAirReason: 'CAMPAIGN_REJECTED' }, creationTime: '2026-01-01' },
+          // Pending: PENDING_APPROVAL
+          { id: '5', name: 'Pending', enabled: true, liveStatus: { campaignOnAir: false, onAirReason: 'PENDING_APPROVAL' }, creationTime: '2026-01-01' },
         ],
       })
       // Mock statistics calls for each campaign
@@ -173,7 +178,7 @@ describe('OutbrainSource', () => {
       const campaigns = await source.getCampaigns()
 
       expect(campaigns[0].status).toBe('active')
-      expect(campaigns[1].status).toBe('active')
+      expect(campaigns[1].status).toBe('paused')
       expect(campaigns[2].status).toBe('paused')
       expect(campaigns[3].status).toBe('deleted')
       expect(campaigns[4].status).toBe('pending')

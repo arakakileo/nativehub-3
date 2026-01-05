@@ -149,14 +149,6 @@ export class OutbrainSource extends BaseTrafficSource {
 
       logger.info({ campaignCount: response.campaigns.length }, 'Outbrain campaigns fetched')
 
-      // Debug: Log first campaign to see all raw fields
-      if (response.campaigns.length > 0) {
-        const firstCampaign = response.campaigns[0]
-        logger.info({
-          allFields: JSON.stringify(firstCampaign)
-        }, 'Outbrain campaign raw data - ALL FIELDS')
-      }
-
       // Fetch statistics for each campaign in parallel (with rate limiting)
       let statsFailures = 0
       const campaignsWithStats = await Promise.all(
@@ -393,7 +385,7 @@ export class OutbrainSource extends BaseTrafficSource {
       sourceId: 'outbrain',
       sourceAccountId: '',
       name: campaign.name,
-      status: this.mapStatus(campaign.status),
+      status: this.mapCampaignStatus(campaign),
       enabled: campaign.enabled,
       budget: campaign.budget?.amount || 'unlimited',
       bid: campaign.cpc || 0,
@@ -415,20 +407,41 @@ export class OutbrainSource extends BaseTrafficSource {
     }
   }
 
-  private mapStatus(status: string): 'active' | 'paused' | 'deleted' | 'pending' {
-    switch (status?.toUpperCase()) {
-      case 'RUNNING':
-      case 'LIVE':
-        return 'active'
-      case 'PAUSED':
-      case 'STOPPED':
-        return 'paused'
-      case 'DELETED':
-      case 'REJECTED':
-        return 'deleted'
-      default:
-        return 'pending'
+  /**
+   * Map Outbrain campaign status using liveStatus field
+   * Outbrain uses liveStatus.campaignOnAir (boolean) and liveStatus.onAirReason (string)
+   * instead of a simple status field
+   */
+  private mapCampaignStatus(campaign: OutbrainCampaign): 'active' | 'paused' | 'deleted' | 'pending' {
+    // If campaign is on air, it's active
+    if (campaign.liveStatus?.campaignOnAir) {
+      return 'active'
     }
+
+    // Check onAirReason for specific statuses
+    const reason = campaign.liveStatus?.onAirReason?.toUpperCase()
+    if (reason) {
+      // Paused/disabled states
+      if (reason.includes('DISABLED') || reason.includes('PAUSED') || reason.includes('STOPPED')) {
+        return 'paused'
+      }
+      // Deleted/rejected states
+      if (reason.includes('DELETED') || reason.includes('REJECTED')) {
+        return 'deleted'
+      }
+      // Pending approval states
+      if (reason.includes('PENDING') || reason.includes('REVIEW') || reason.includes('APPROVAL')) {
+        return 'pending'
+      }
+    }
+
+    // If campaign is disabled but no specific reason, treat as paused
+    if (!campaign.enabled) {
+      return 'paused'
+    }
+
+    // Default to pending for unknown states
+    return 'pending'
   }
 }
 
@@ -436,7 +449,6 @@ export class OutbrainSource extends BaseTrafficSource {
 interface OutbrainCampaign {
   id: string
   name: string
-  status: string
   enabled: boolean
   budget?: {
     amount: number
@@ -449,6 +461,12 @@ interface OutbrainCampaign {
   conversions?: number
   creationTime?: string
   lastModified?: string
+  // Outbrain uses liveStatus instead of status field
+  liveStatus?: {
+    campaignOnAir: boolean
+    onAirReason?: string
+    amountSpent?: number
+  }
 }
 
 interface OutbrainPublisher {
