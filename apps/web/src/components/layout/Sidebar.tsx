@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   Megaphone,
   Link2,
-  Zap,
   Ban,
   Settings,
   LogOut,
@@ -16,7 +15,6 @@ const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/campaigns', icon: Megaphone, label: 'Campaigns' },
   { to: '/accounts', icon: Link2, label: 'Source Accounts' },
-  { to: '/optimizer', icon: Zap, label: 'Optimizer' },
   { to: '/widgets', icon: Ban, label: 'Widget Blacklist' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ]

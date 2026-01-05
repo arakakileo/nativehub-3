@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Filter, RefreshCw, Pause, Play, ChevronUp, ChevronDown, Calendar } from 'lucide-react'
 import { DataTable } from '../components/ui/DataTable'
@@ -52,6 +53,7 @@ const DATE_PRESETS = [
 ] as const
 
 export function Campaigns() {
+  const navigate = useNavigate()
   const [filters, setFilters] = useState<CampaignFilters>({
     status: 'all',
     sortBy: 'spend',
@@ -91,6 +93,12 @@ export function Campaigns() {
   const toggleStatus = (campaign: Campaign) => {
     const newStatus = campaign.status === 'active' ? 'paused' : 'active'
     updateMutation.mutate({ id: campaign.id, data: { status: newStatus } })
+  }
+
+  // Navigate to campaign detail
+  const handleRowClick = (campaign: Campaign) => {
+    const id = `${campaign.sourceAccountId}_${campaign.externalCampaignId}`
+    navigate(`/campaigns/${id}`)
   }
 
   // Sortable header component
@@ -196,7 +204,10 @@ export function Campaigns() {
           size="sm"
           variant="ghost"
           aria-label={c.status === 'active' ? `Pause ${c.name}` : `Resume ${c.name}`}
-          onClick={() => toggleStatus(c)}
+          onClick={(e) => {
+            e.stopPropagation() // Prevent row click
+            toggleStatus(c)
+          }}
           disabled={updateMutation.isPending}
         >
           {c.status === 'active' ? (
@@ -352,6 +363,7 @@ export function Campaigns() {
         keyField="id"
         isLoading={isLoading}
         emptyMessage="No campaigns found. Sync your source accounts to import campaigns."
+        onRowClick={handleRowClick}
       />
     </div>
   )

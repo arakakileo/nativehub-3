@@ -5,9 +5,7 @@ import { Login } from './pages/Login'
 import { Dashboard } from './pages/Dashboard'
 import { SourceAccounts } from './pages/SourceAccounts'
 import { Campaigns } from './pages/Campaigns'
-import { Optimizer } from './pages/Optimizer'
-import { OptimizerDetail } from './pages/OptimizerDetail'
-import { OptimizerWidgets } from './pages/OptimizerWidgets'
+import { CampaignDetail } from './pages/CampaignDetail'
 import { WidgetBlacklist } from './pages/WidgetBlacklist'
 import { Settings } from './pages/Settings'
 
@@ -37,9 +35,7 @@ function App() {
         <Route index element={<Dashboard />} />
         <Route path="accounts" element={<SourceAccounts />} />
         <Route path="campaigns" element={<Campaigns />} />
-        <Route path="optimizer" element={<Optimizer />} />
-        <Route path="optimizer/:id" element={<OptimizerDetail />} />
-        <Route path="optimizer/:id/widgets" element={<OptimizerWidgets />} />
+        <Route path="campaigns/:id" element={<CampaignDetail />} />
         <Route path="widgets" element={<WidgetBlacklist />} />
         <Route path="settings" element={<Settings />} />
       </Route>

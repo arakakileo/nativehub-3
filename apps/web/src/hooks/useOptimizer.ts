@@ -24,6 +24,20 @@ export function useOptimizerCampaign(id: string) {
   })
 }
 
+// Find optimizer campaign by source/external IDs and fetch detail
+export function useOptimizerCampaignByIds(sourceAccountId: string, externalCampaignId: string) {
+  const { data: campaigns = [] } = useOptimizerCampaigns()
+  const optCampaign = campaigns.find(
+    (oc) => oc.sourceAccountId === sourceAccountId && oc.externalCampaignId === externalCampaignId
+  )
+
+  return useQuery({
+    queryKey: ['optimizerCampaign', optCampaign?.id],
+    queryFn: () => api.getOptimizerCampaign(optCampaign!.id),
+    enabled: !!optCampaign?.id,
+  })
+}
+
 export function useCreateOptimizerCampaign() {
   const queryClient = useQueryClient()
 
