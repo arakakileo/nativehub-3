@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Filter, RefreshCw, Pause, Play, ChevronUp, ChevronDown } from 'lucide-react'
+import { Filter, RefreshCw, Pause, Play, ChevronUp, ChevronDown, Calendar } from 'lucide-react'
 import { DataTable } from '../components/ui/DataTable'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { Button } from '../components/ui/Button'
@@ -10,12 +10,50 @@ import { useSourceAccounts } from '../hooks/useSourceAccounts'
 import { formatCurrency, formatNumber, getSourceColor } from '../lib/utils'
 import type { Campaign, CampaignFilters, SourceAccount } from '../lib/api'
 
+// Date preset helpers
+const getDatePreset = (preset: string): { from: string; to: string } => {
+  const today = new Date()
+  const formatDate = (d: Date) => d.toISOString().split('T')[0]
+
+  switch (preset) {
+    case 'last7days': {
+      const from = new Date(today)
+      from.setDate(today.getDate() - 6) // -6 to include today = 7 days
+      return { from: formatDate(from), to: formatDate(today) }
+    }
+    case 'last3days': {
+      const from = new Date(today)
+      from.setDate(today.getDate() - 2) // -2 to include today = 3 days
+      return { from: formatDate(from), to: formatDate(today) }
+    }
+    case 'thisMonth': {
+      const from = new Date(today.getFullYear(), today.getMonth(), 1)
+      return { from: formatDate(from), to: formatDate(today) }
+    }
+    case 'lastMonth': {
+      const from = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+      const to = new Date(today.getFullYear(), today.getMonth(), 0) // Last day of previous month
+      return { from: formatDate(from), to: formatDate(to) }
+    }
+    default:
+      return { from: '', to: '' }
+  }
+}
+
+const DATE_PRESETS = [
+  { key: 'last7days', label: 'Last 7 days' },
+  { key: 'last3days', label: 'Last 3 days' },
+  { key: 'thisMonth', label: 'This month' },
+  { key: 'lastMonth', label: 'Last month' },
+] as const
+
 export function Campaigns() {
   const [filters, setFilters] = useState<CampaignFilters>({
     status: 'all',
     sortBy: 'spend',
     sortOrder: 'desc',
   })
+  const [activePreset, setActivePreset] = useState<string | null>(null)
 
   const { data: campaigns = [], isLoading, refetch } = useCampaigns(filters)
   const { data: accounts = [] } = useSourceAccounts()
@@ -24,6 +62,17 @@ export function Campaigns() {
   // Update filter helper
   const updateFilter = <K extends keyof CampaignFilters>(key: K, value: CampaignFilters[K]) => {
     setFilters((prev) => ({ ...prev, [key]: value || undefined }))
+    // Clear preset when manually changing date filters
+    if (key === 'from' || key === 'to') {
+      setActivePreset(null)
+    }
+  }
+
+  // Apply date preset
+  const applyDatePreset = (presetKey: string) => {
+    const { from, to } = getDatePreset(presetKey)
+    setFilters((prev) => ({ ...prev, from, to }))
+    setActivePreset(presetKey)
   }
 
   // Toggle sort helper
@@ -234,18 +283,37 @@ export function Campaigns() {
           />
         </div>
 
+        {/* Date Presets */}
+        <div className="flex items-center gap-1 border-l pl-3 ml-1">
+          <Calendar className="h-4 w-4 text-muted-foreground" />
+          {DATE_PRESETS.map((preset) => (
+            <button
+              key={preset.key}
+              onClick={() => applyDatePreset(preset.key)}
+              className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+                activePreset === preset.key
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted hover:bg-muted/80 text-muted-foreground'
+              }`}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+
         {/* Clear filters */}
         {(filters.from || filters.to || filters.status !== 'all' || filters.sourceAccountId) && (
           <Button
             variant="ghost"
             size="sm"
-            onClick={() =>
+            onClick={() => {
               setFilters({
                 status: 'all',
                 sortBy: filters.sortBy,
                 sortOrder: filters.sortOrder,
               })
-            }
+              setActivePreset(null)
+            }}
           >
             Clear Filters
           </Button>
