@@ -1,8 +1,10 @@
 import { Hono } from 'hono'
-import { eq, and, inArray, gte, lte, asc, desc, sql } from 'drizzle-orm'
+import { eq, and, inArray, asc, desc, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '../lib/db.js'
 import { sourceAccounts, campaignSyncs } from '../db/schema.js'
+import { getAuthenticatedSource } from '../traffic-sources/index.js'
+import { logger } from '../lib/logger.js'
 
 // Query params schema for listing campaigns
 const ListCampaignsQuerySchema = z.object({
@@ -13,6 +15,51 @@ const ListCampaignsQuerySchema = z.object({
   sortBy: z.enum(['name', 'spend', 'conversions', 'clicks', 'cpc']).optional().default('spend'),
   sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
 })
+
+// Campaign result type for API response
+interface CampaignResult {
+  id: string
+  sourceAccountId: string
+  externalCampaignId: string
+  name: string
+  status: string
+  enabled: boolean
+  budget: string | null
+  bid: string
+  spend: number
+  impressions: number
+  clicks: number
+  conversions: number
+  ctr: number
+  cpc: number
+  cpa: number
+  syncedAt: Date | string
+}
+
+// Sort campaigns by field
+function sortCampaigns(
+  campaigns: CampaignResult[],
+  sortBy: string = 'spend',
+  sortOrder: string = 'desc'
+): CampaignResult[] {
+  const multiplier = sortOrder === 'desc' ? -1 : 1
+  return [...campaigns].sort((a, b) => {
+    switch (sortBy) {
+      case 'name':
+        return multiplier * a.name.localeCompare(b.name)
+      case 'spend':
+        return multiplier * (a.spend - b.spend)
+      case 'clicks':
+        return multiplier * (a.clicks - b.clicks)
+      case 'conversions':
+        return multiplier * (a.conversions - b.conversions)
+      case 'cpc':
+        return multiplier * (a.cpc - b.cpc)
+      default:
+        return multiplier * (a.spend - b.spend)
+    }
+  })
+}
 
 // Note: sessionMiddleware is applied globally in index.ts for all /api/v1/* routes
 export const campaignRoutes = new Hono()
@@ -36,8 +83,8 @@ export const campaignRoutes = new Hono()
 
     const query = parseResult.data
 
-    // Get user's source accounts
-    const accounts = await db.select({ id: sourceAccounts.id })
+    // Get user's source accounts (full data for API fetch path)
+    const accounts = await db.select()
       .from(sourceAccounts)
       .where(eq(sourceAccounts.userId, userId))
 
@@ -47,15 +94,90 @@ export const campaignRoutes = new Hono()
 
     const accountIds = accounts.map((a) => a.id)
 
-    // Build query conditions
+    // Validate sourceAccountId if provided
+    if (query.sourceAccountId && !accountIds.includes(query.sourceAccountId)) {
+      return c.json({ error: 'Source account not found' }, 404)
+    }
+
+    // BRANCH: Date filter provided = fetch from traffic source API
+    if (query.from && query.to) {
+      const results: CampaignResult[] = []
+      const warnings: string[] = []
+
+      // Filter to active/connected accounts
+      const activeAccounts = accounts.filter(
+        (a) => a.status === 'connected' || a.status === 'active'
+      )
+
+      // Filter by sourceAccountId if provided
+      const targetAccounts = query.sourceAccountId
+        ? activeAccounts.filter((a) => a.id === query.sourceAccountId)
+        : activeAccounts
+
+      logger.info({ from: query.from, to: query.to, accountCount: targetAccounts.length }, 'Fetching campaigns from API with date filter')
+
+      // Fetch from each account in parallel
+      await Promise.all(
+        targetAccounts.map(async (account) => {
+          try {
+            const source = await getAuthenticatedSource(account.id)
+
+            // getCampaigns internally calls getAllCampaignStatistics(from, to)
+            const campaigns = await source.getCampaigns({
+              from: query.from,
+              to: query.to,
+            })
+
+            // Filter by status if not 'all'
+            const filteredCampaigns = query.status === 'all'
+              ? campaigns
+              : campaigns.filter((c) => c.status === query.status)
+
+            // Map to response format
+            for (const campaign of filteredCampaigns) {
+              results.push({
+                id: campaign.id,
+                sourceAccountId: account.id,
+                externalCampaignId: campaign.externalId,
+                name: campaign.name,
+                status: campaign.status,
+                enabled: campaign.enabled,
+                budget: campaign.budget === 'unlimited' ? null : String(campaign.budget),
+                bid: String(campaign.bid),
+                spend: campaign.metrics.spend,
+                impressions: campaign.metrics.impressions,
+                clicks: campaign.metrics.clicks,
+                conversions: campaign.metrics.conversions,
+                ctr: campaign.metrics.ctr,
+                cpc: campaign.metrics.cpc,
+                cpa: campaign.metrics.cpa,
+                syncedAt: new Date().toISOString(),
+              })
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Unknown error'
+            warnings.push(`${account.name}: ${msg}`)
+            logger.error({ accountId: account.id, error: msg }, 'Failed to fetch campaigns from API')
+          }
+        })
+      )
+
+      // Sort results
+      const sortedResults = sortCampaigns(results, query.sortBy, query.sortOrder)
+
+      // Return with warnings if any errors
+      if (warnings.length > 0) {
+        return c.json({ data: sortedResults, warnings })
+      }
+
+      return c.json({ data: sortedResults })
+    }
+
+    // DEFAULT: No date filter = query DB (fast path)
     const conditions = []
 
-    // Filter by source account (either specific or all user's accounts)
+    // Filter by source account
     if (query.sourceAccountId) {
-      // Verify user owns this account
-      if (!accountIds.includes(query.sourceAccountId)) {
-        return c.json({ error: 'Source account not found' }, 404)
-      }
       conditions.push(eq(campaignSyncs.sourceAccountId, query.sourceAccountId))
     } else {
       conditions.push(inArray(campaignSyncs.sourceAccountId, accountIds))
@@ -64,14 +186,6 @@ export const campaignRoutes = new Hono()
     // Status filter
     if (query.status !== 'all') {
       conditions.push(eq(campaignSyncs.status, query.status))
-    }
-
-    // Date filter (filter by syncedAt)
-    if (query.from) {
-      conditions.push(gte(campaignSyncs.syncedAt, new Date(query.from)))
-    }
-    if (query.to) {
-      conditions.push(lte(campaignSyncs.syncedAt, new Date(query.to + 'T23:59:59Z')))
     }
 
     // Determine sort column
@@ -86,7 +200,6 @@ export const campaignRoutes = new Hono()
         case 'clicks':
           return campaignSyncs.clicks
         case 'cpc':
-          // CPC = spend / clicks, sort by spend as approximation for DB level
           return sql`CAST(${campaignSyncs.spend} AS DECIMAL)`
         default:
           return sql`CAST(${campaignSyncs.spend} AS DECIMAL)`
@@ -103,11 +216,10 @@ export const campaignRoutes = new Hono()
       .where(and(...conditions))
       .orderBy(orderFn(sortColumn))
 
-    // Dedupe by externalCampaignId, keeping latest (already sorted)
+    // Dedupe by externalCampaignId, keeping latest
     const latestByExternalId = new Map<string, typeof campaigns[0]>()
     for (const campaign of campaigns) {
       const key = `${campaign.sourceAccountId}:${campaign.externalCampaignId}`
-      // Keep only the first occurrence (since we've already sorted)
       if (!latestByExternalId.has(key)) {
         latestByExternalId.set(key, campaign)
       }
@@ -139,7 +251,7 @@ export const campaignRoutes = new Hono()
       }
     })
 
-    // Sort by CPC if requested (needs to be done in memory after computing CPC)
+    // Sort by CPC if requested
     if (query.sortBy === 'cpc') {
       results.sort((a, b) => {
         const diff = a.cpc - b.cpc

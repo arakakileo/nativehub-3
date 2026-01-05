@@ -16,6 +16,9 @@ const getDatePreset = (preset: string): { from: string; to: string } => {
   const formatDate = (d: Date) => d.toISOString().split('T')[0]
 
   switch (preset) {
+    case 'today': {
+      return { from: formatDate(today), to: formatDate(today) }
+    }
     case 'last7days': {
       const from = new Date(today)
       from.setDate(today.getDate() - 6) // -6 to include today = 7 days
@@ -41,8 +44,9 @@ const getDatePreset = (preset: string): { from: string; to: string } => {
 }
 
 const DATE_PRESETS = [
-  { key: 'last7days', label: 'Last 7 days' },
+  { key: 'today', label: 'Today' },
   { key: 'last3days', label: 'Last 3 days' },
+  { key: 'last7days', label: 'Last 7 days' },
   { key: 'thisMonth', label: 'This month' },
   { key: 'lastMonth', label: 'Last month' },
 ] as const
