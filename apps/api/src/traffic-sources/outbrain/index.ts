@@ -198,7 +198,8 @@ export class OutbrainSource extends BaseTrafficSource {
     const statsMap = new Map<string, CampaignStats>()
 
     try {
-      const response = await makeRequest<{ results: OutbrainPeriodicResult[] }>(
+      // Use generic type to see full response structure
+      const response = await makeRequest<Record<string, unknown>>(
         url,
         {
           headers: {
@@ -207,11 +208,14 @@ export class OutbrainSource extends BaseTrafficSource {
         }
       )
 
-      // Log raw response for debugging
-      logger.info({ resultsCount: response.results?.length || 0, rawResults: response.results?.slice(0, 3) }, 'Outbrain periodic stats received')
+      // Log full raw response for debugging - important to understand API structure
+      logger.info({ responseKeys: Object.keys(response), fullResponse: JSON.stringify(response).slice(0, 500) }, 'Outbrain periodic RAW response')
+
+      const results = (response.results || response.campaignResults || response.data || []) as OutbrainPeriodicResult[]
+      logger.info({ resultsCount: results?.length || 0, rawResults: results?.slice(0, 3) }, 'Outbrain periodic stats received')
 
       // Aggregate results by campaign ID (results may have multiple entries per campaign for daily breakdown)
-      for (const result of response.results || []) {
+      for (const result of results) {
         const campaignId = result.campaignId
         if (!campaignId) continue
 
