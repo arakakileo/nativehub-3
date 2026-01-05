@@ -149,20 +149,6 @@ export class OutbrainSource extends BaseTrafficSource {
 
       logger.info({ campaignCount: response.campaigns.length }, 'Outbrain campaigns fetched')
 
-      // Log ALL enabled campaigns to see their liveStatus
-      if (response.campaigns.length > 0) {
-        const enabledCampaigns = response.campaigns.filter(c => c.enabled).slice(0, 5)
-        enabledCampaigns.forEach(c => {
-          logger.info({
-            campaignId: c.id,
-            campaignName: c.name,
-            enabled: c.enabled,
-            liveStatus: c.liveStatus,
-            mappedStatus: this.mapCampaignStatus(c)
-          }, 'Outbrain ENABLED campaign - raw liveStatus')
-        })
-      }
-
       // Fetch statistics for each campaign in parallel (with rate limiting)
       let statsFailures = 0
       const campaignsWithStats = await Promise.all(
@@ -447,15 +433,21 @@ export class OutbrainSource extends BaseTrafficSource {
       if (reason.includes('PENDING') || reason.includes('REVIEW') || reason.includes('APPROVAL')) {
         return 'pending'
       }
+      // Not currently running due to schedule - but campaign is enabled and will run
+      // Treat as active since it's just waiting for scheduled time
+      if (reason.includes('NOT_IN_SCHEDULING') || reason.includes('SCHEDULING')) {
+        return campaign.enabled ? 'active' : 'paused'
+      }
+    }
+
+    // If campaign is enabled but not on air (unknown reason), treat as active
+    // since the user has enabled it
+    if (campaign.enabled) {
+      return 'active'
     }
 
     // If campaign is disabled but no specific reason, treat as paused
-    if (!campaign.enabled) {
-      return 'paused'
-    }
-
-    // Default to pending for unknown states
-    return 'pending'
+    return 'paused'
   }
 }
 
