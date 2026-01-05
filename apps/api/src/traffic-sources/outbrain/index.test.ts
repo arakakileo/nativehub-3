@@ -105,9 +105,13 @@ describe('OutbrainSource', () => {
           },
         ],
       })
-      // Mock periodic stats call (ONE call for ALL campaigns)
+      // Mock periodic stats call (ONE call for ALL campaigns) - new nested structure
       vi.mocked(makeRequest).mockResolvedValueOnce({
-        results: [{ campaignId: 'ob-camp-123', spend: 250, impressions: 100000, clicks: 550, conversions: 18 }],
+        campaignResults: [{
+          campaignId: 'ob-camp-123',
+          results: [{ metrics: { spend: 250, impressions: 100000, clicks: 550, conversions: 18 } }],
+        }],
+        totalCampaigns: 1,
       })
 
       const campaigns = await source.getCampaigns()
@@ -138,9 +142,13 @@ describe('OutbrainSource', () => {
           },
         ],
       })
-      // Mock periodic stats call with metrics (includes campaignId)
+      // Mock periodic stats call with metrics (nested structure)
       vi.mocked(makeRequest).mockResolvedValueOnce({
-        results: [{ campaignId: 'camp-123', spend: 100, impressions: 10000, clicks: 200, conversions: 4 }],
+        campaignResults: [{
+          campaignId: 'camp-123',
+          results: [{ metrics: { spend: 100, impressions: 10000, clicks: 200, conversions: 4 } }],
+        }],
+        totalCampaigns: 1,
       })
 
       const campaigns = await source.getCampaigns()
@@ -173,7 +181,7 @@ describe('OutbrainSource', () => {
         ],
       })
       // Mock periodic stats call (ONE call for ALL campaigns - returns empty for this test)
-      vi.mocked(makeRequest).mockResolvedValueOnce({ results: [] })
+      vi.mocked(makeRequest).mockResolvedValueOnce({ campaignResults: [], totalCampaigns: 0 })
 
       const campaigns = await source.getCampaigns()
 

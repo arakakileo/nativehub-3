@@ -198,8 +198,8 @@ export class OutbrainSource extends BaseTrafficSource {
     const statsMap = new Map<string, CampaignStats>()
 
     try {
-      // Use generic type to see full response structure
-      const response = await makeRequest<Record<string, unknown>>(
+      // Response structure: { campaignResults: [{ campaignId, results: [{ metrics: {...} }] }], totalCampaigns }
+      const response = await makeRequest<OutbrainPeriodicResponse>(
         url,
         {
           headers: {
@@ -208,24 +208,29 @@ export class OutbrainSource extends BaseTrafficSource {
         }
       )
 
-      // Log full raw response for debugging - important to understand API structure
-      logger.info({ responseKeys: Object.keys(response), fullResponse: JSON.stringify(response).slice(0, 500) }, 'Outbrain periodic RAW response')
+      const campaignResults = response.campaignResults || []
+      logger.info({
+        campaignCount: campaignResults.length,
+        totalCampaigns: response.totalCampaigns
+      }, 'Outbrain periodic stats received')
 
-      const results = (response.results || response.campaignResults || response.data || []) as OutbrainPeriodicResult[]
-      logger.info({ resultsCount: results?.length || 0, rawResults: results?.slice(0, 3) }, 'Outbrain periodic stats received')
-
-      // Aggregate results by campaign ID (results may have multiple entries per campaign for daily breakdown)
-      for (const result of results) {
-        const campaignId = result.campaignId
+      // Aggregate daily results per campaign
+      for (const campaignResult of campaignResults) {
+        const campaignId = campaignResult.campaignId
         if (!campaignId) continue
 
-        const existing = statsMap.get(campaignId) || { spend: 0, impressions: 0, clicks: 0, conversions: 0 }
-        statsMap.set(campaignId, {
-          spend: existing.spend + (result.spend || 0),
-          impressions: existing.impressions + (result.impressions || 0),
-          clicks: existing.clicks + (result.clicks || 0),
-          conversions: existing.conversions + (result.conversions || 0),
-        })
+        // Aggregate all daily metrics for this campaign
+        let spend = 0, impressions = 0, clicks = 0, conversions = 0
+        for (const dailyResult of campaignResult.results || []) {
+          const m = dailyResult.metrics
+          if (m) {
+            spend += m.spend || 0
+            impressions += m.impressions || 0
+            clicks += m.clicks || 0
+            conversions += m.conversions || m.totalConversions || 0
+          }
+        }
+        statsMap.set(campaignId, { spend, impressions, clicks, conversions })
       }
 
       logger.info({ campaignsWithStats: statsMap.size }, 'Outbrain stats aggregated by campaign')
@@ -523,15 +528,31 @@ interface OutbrainPerformanceResult {
 }
 
 // Response from /reports/marketers/{marketer}/campaigns/periodic endpoint
-interface OutbrainPeriodicResult {
+// Actual structure: { campaignResults: [{ campaignId, results: [{ metadata, metrics }] }], totalCampaigns }
+interface OutbrainPeriodicResponse {
+  campaignResults?: OutbrainCampaignResult[]
+  totalCampaigns?: number
+}
+
+interface OutbrainCampaignResult {
   campaignId?: string
   campaignName?: string
-  fromDate?: string
-  toDate?: string
-  spend?: number
+  results?: OutbrainDailyResult[]
+  totalResults?: number
+}
+
+interface OutbrainDailyResult {
+  metadata?: { id: string; fromDate: string; toDate: string }
+  metrics?: OutbrainMetrics
+}
+
+interface OutbrainMetrics {
   impressions?: number
   clicks?: number
+  spend?: number
   conversions?: number
-  cpc?: number
+  totalConversions?: number
+  ecpc?: number
   ctr?: number
+  cpa?: number
 }
