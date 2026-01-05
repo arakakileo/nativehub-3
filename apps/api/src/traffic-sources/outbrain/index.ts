@@ -185,10 +185,10 @@ export class OutbrainSource extends BaseTrafficSource {
     const fromDate = from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
     // Use the periodic campaigns endpoint - ONE call for ALL campaigns
+    // Note: We don't use breakdown parameter - API returns campaign-level aggregates
     const url = buildUrl(config.baseUrl, `/reports/marketers/${this.marketerId}/campaigns/periodic`, {
       from: fromDate,
       to: toDate,
-      breakdown: 'daily', // Get daily breakdown which aggregates per campaign
       sort: '-spend', // Sort by spend descending (includes direction char to avoid 500 errors)
       limit: 500, // Max allowed by Outbrain API
     })
@@ -207,7 +207,8 @@ export class OutbrainSource extends BaseTrafficSource {
         }
       )
 
-      logger.info({ resultsCount: response.results?.length || 0 }, 'Outbrain periodic stats received')
+      // Log raw response for debugging
+      logger.info({ resultsCount: response.results?.length || 0, rawResults: response.results?.slice(0, 3) }, 'Outbrain periodic stats received')
 
       // Aggregate results by campaign ID (results may have multiple entries per campaign for daily breakdown)
       for (const result of response.results || []) {
