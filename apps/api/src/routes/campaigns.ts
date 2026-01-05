@@ -325,3 +325,55 @@ export const campaignRoutes = new Hono()
       },
     })
   })
+
+  // Get widgets for a campaign from traffic source API
+  .get('/:sourceAccountId/:externalCampaignId/widgets', async (c) => {
+    const userId = c.get('userId')
+    const sourceAccountId = c.req.param('sourceAccountId')
+    const externalCampaignId = c.req.param('externalCampaignId')
+
+    // Verify user owns the source account
+    const accounts = await db.select()
+      .from(sourceAccounts)
+      .where(and(
+        eq(sourceAccounts.id, sourceAccountId),
+        eq(sourceAccounts.userId, userId)
+      ))
+
+    if (accounts.length === 0) {
+      return c.json({ error: 'Source account not found' }, 404)
+    }
+
+    const account = accounts[0]
+
+    try {
+      // Get authenticated traffic source client
+      const source = await getAuthenticatedSource(account.id)
+
+      // Fetch widgets from traffic source API
+      const widgets = await source.getWidgets({ campaignId: externalCampaignId })
+
+      // Map to response format
+      const data = widgets.map((w) => ({
+        id: w.id,
+        externalId: w.externalId,
+        name: w.name,
+        domain: w.domain,
+        metrics: {
+          spend: w.metrics.spend,
+          impressions: w.metrics.impressions,
+          clicks: w.metrics.clicks,
+          conversions: w.metrics.conversions,
+          ctr: w.metrics.ctr,
+          cpc: w.metrics.cpc,
+          cpa: w.metrics.cpa,
+        },
+      }))
+
+      return c.json({ data })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      logger.error({ sourceAccountId, externalCampaignId, error: msg }, 'Failed to fetch widgets')
+      return c.json({ error: `Failed to fetch widgets: ${msg}` }, 500)
+    }
+  })
