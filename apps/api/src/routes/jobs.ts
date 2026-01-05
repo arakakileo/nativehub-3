@@ -29,7 +29,7 @@ export const jobRoutes = new Hono()
         scheduler: {
           active: !!optimizerSchedule,
           cron: optimizerSchedule?.cron ?? null,
-          timezone: (optimizerSchedule as Record<string, unknown>)?.timezone ?? null,
+          timezone: (optimizerSchedule as unknown as Record<string, unknown>)?.timezone ?? null,
         },
         queue: {
           pending: pendingSize ?? 0,
