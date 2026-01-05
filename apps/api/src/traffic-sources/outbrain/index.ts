@@ -149,6 +149,20 @@ export class OutbrainSource extends BaseTrafficSource {
 
       logger.info({ campaignCount: response.campaigns.length }, 'Outbrain campaigns fetched')
 
+      // Log liveStatus for debugging status mapping (temporary)
+      if (response.campaigns.length > 0) {
+        const sampleCampaigns = response.campaigns.slice(0, 3)
+        sampleCampaigns.forEach(c => {
+          logger.info({
+            campaignId: c.id,
+            campaignName: c.name,
+            enabled: c.enabled,
+            liveStatus: c.liveStatus,
+            mappedStatus: this.mapCampaignStatus(c)
+          }, 'Outbrain campaign status mapping')
+        })
+      }
+
       // Fetch statistics for each campaign in parallel (with rate limiting)
       let statsFailures = 0
       const campaignsWithStats = await Promise.all(
