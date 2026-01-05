@@ -149,6 +149,17 @@ export class OutbrainSource extends BaseTrafficSource {
 
       logger.info({ campaignCount: response.campaigns.length }, 'Outbrain campaigns fetched')
 
+      // Debug: Log first campaign to see raw status value
+      if (response.campaigns.length > 0) {
+        const firstCampaign = response.campaigns[0]
+        logger.debug({
+          campaignId: firstCampaign.id,
+          rawStatus: firstCampaign.status,
+          enabled: firstCampaign.enabled,
+          name: firstCampaign.name
+        }, 'Outbrain campaign raw data sample')
+      }
+
       // Fetch statistics for each campaign in parallel (with rate limiting)
       let statsFailures = 0
       const campaignsWithStats = await Promise.all(
