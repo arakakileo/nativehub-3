@@ -52,3 +52,38 @@ export {
   type BatchExecutionOptions,
   type BatchExecutionResult,
 } from './source-aware-action-executor.js'
+
+// Phase 4: Advanced Features
+export {
+  BidRecommendationsService,
+  bidRecommendationsService,
+  type BidRecommendation,
+  type PlacementPerformance,
+} from './bid-recommendations.service.js'
+
+export {
+  AnomalyDetectionService,
+  anomalyDetectionService,
+  type Anomaly,
+  type AnomalyType,
+  type AnomalySeverity,
+} from './anomaly-detection.service.js'
+
+export {
+  ABTestingService,
+  abTestingService,
+  type Experiment,
+  type ExperimentVariant,
+  type ExperimentResult,
+  type ExperimentStatus,
+} from './ab-testing.service.js'
+
+export {
+  RuleBuilderService,
+  ruleBuilderService,
+  type CustomRule,
+  type RuleCondition,
+  type RuleAction,
+  type RuleEvaluationResult,
+  type RuleValidationResult,
+} from './rule-builder.service.js'
