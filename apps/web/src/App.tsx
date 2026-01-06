@@ -8,6 +8,7 @@ import { Campaigns } from './pages/Campaigns'
 import { CampaignDetail } from './pages/CampaignDetail'
 import { WidgetBlacklist } from './pages/WidgetBlacklist'
 import { Settings } from './pages/Settings'
+import { OptimizerDashboard } from './pages/OptimizerDashboard'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -36,6 +37,7 @@ function App() {
         <Route path="accounts" element={<SourceAccounts />} />
         <Route path="campaigns" element={<Campaigns />} />
         <Route path="campaigns/:id" element={<CampaignDetail />} />
+        <Route path="optimizer" element={<OptimizerDashboard />} />
         <Route path="widgets" element={<WidgetBlacklist />} />
         <Route path="settings" element={<Settings />} />
       </Route>

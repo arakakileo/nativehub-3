@@ -7,6 +7,7 @@ import {
   Ban,
   Settings,
   LogOut,
+  Zap,
 } from 'lucide-react'
 import { useAuthStore } from '../../stores/authStore'
 import { cn } from '../../lib/utils'
@@ -14,6 +15,7 @@ import { cn } from '../../lib/utils'
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/campaigns', icon: Megaphone, label: 'Campaigns' },
+  { to: '/optimizer', icon: Zap, label: 'Optimizer' },
   { to: '/accounts', icon: Link2, label: 'Source Accounts' },
   { to: '/widgets', icon: Ban, label: 'Widget Blacklist' },
   { to: '/settings', icon: Settings, label: 'Settings' },
