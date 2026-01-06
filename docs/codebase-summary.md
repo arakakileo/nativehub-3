@@ -600,6 +600,141 @@ sourceAccountRoutes
 
 ---
 
+## Recent Changes (Phase 7 - Campaign Sync Service Enhancement)
+
+### New Files - Phase 7
+
+1. `/apps/api/src/services/sync-metrics.ts` - Sync audit logging and metrics service
+2. `/apps/api/src/routes/sync.ts` - 6 new API endpoints for sync operations
+
+### New Database Tables - Phase 7
+
+**`sync_runs`** - Audit log for sync executions
+- `id` (uuid, PK)
+- `sourceAccountId` (uuid, FK to sourceAccounts)
+- `triggeredBy` (text): 'scheduled' | 'manual'
+- `status` (text): 'running' | 'completed' | 'failed'
+- `startedAt`, `completedAt` (timestamps with timezone)
+- `durationMs` (integer)
+- `campaignsTotal`, `campaignsSynced`, `campaignsFailed`, `widgetsSynced` (integers)
+- `error` (text) - Error message if failed
+- `metadata` (jsonb) - Additional context
+
+**`widget_syncs`** - Historical widget performance snapshots
+- `id` (uuid, PK)
+- `syncRunId` (uuid, FK to syncRuns, cascade delete)
+- `campaignSyncId` (uuid, FK to campaignSyncs, cascade delete)
+- `widgetId` (text)
+- `widgetName` (text)
+- Metrics: `impressions`, `clicks`, `spend`, `conversions`, `revenue`, `ctr`, `cpc`, `cpa`, `roas`
+- `enabled` (boolean)
+- `bidModifier` (numeric)
+- `syncedAt` (timestamp with timezone)
+
+### Enhanced Database Schema - Phase 7
+
+**`campaign_syncs` additions**:
+- `syncStatus` (text): 'idle' | 'syncing' | 'synced' | 'error' - State machine tracking
+- `syncStartedAt` (timestamp) - When sync started
+- `syncError` (text) - Error message if sync failed
+- `lastSyncRunId` (uuid, FK to syncRuns) - References the latest sync run
+
+### New API Endpoints - Phase 7
+
+**Sync Service API** (`/api/v1/sync`):
+
+1. **POST /account/:accountId** - Trigger account sync
+   - Queues manual sync job for entire account
+   - Returns `{ success, jobId, message }`
+
+2. **POST /campaign/:campaignId** - Trigger campaign sync
+   - Queues manual sync for single campaign
+   - Returns `{ success, jobId, message }`
+
+3. **GET /runs** - List sync run history
+   - Query params: `accountId` (optional), `limit` (1-100, default 50), `offset` (default 0)
+   - Returns paginated list of `SyncRun` records
+
+4. **GET /runs/:runId** - Get sync run details
+   - Includes associated campaigns from that run
+   - Returns `SyncRunDetails` with `campaigns` array
+
+5. **GET /widgets/:campaignId** - Get widget history
+   - Query params: `days` (1-90, default 30)
+   - Returns historical widget performance snapshots
+
+6. **GET /job/:jobId** - Get manual sync job status
+   - Returns job state, timing, and execution details
+
+### Enhanced Campaign Sync Service - Phase 7
+
+**New methods**:
+- `syncAccountWithMetrics()` - Sync with full metrics and state tracking
+- `syncSingleCampaign()` - Sync individual campaign with state machine
+- `updateCampaignSyncState()` - State machine: idle→syncing→synced/error
+- `getMetricsService()` - Access sync metrics for external use
+
+**State Machine**:
+```
+idle → syncing → synced (success)
+              → error (failure)
+```
+
+**Widget Sync Enhancement**:
+- Captures widget-level metrics snapshots during each sync
+- Stores historical data for trend analysis
+- Supports up to 30-day retention (configurable)
+- Includes ROAS, bid modifiers, and performance metrics
+
+### New Sync Metrics Service - Phase 7
+
+**Purpose**: Centralized sync audit logging and metrics tracking
+
+**Key Methods**:
+- `startSyncRun()` - Create audit record for sync execution
+- `completeSyncRun()` - Record successful completion with stats
+- `failSyncRun()` - Record failure with error message
+- `getSyncRuns()` - Retrieve sync history (paginated)
+- `getSyncRunDetails()` - Get complete sync run with campaigns
+- `getWidgetHistory()` - Retrieve widget performance history
+- `storeWidgetSnapshots()` - Bulk insert widget metrics
+- `cleanupOldWidgetHistory()` - Retention policy (default 30 days)
+- `cleanupOldSyncRuns()` - Retention policy (default 90 days)
+
+**SyncRunStats Interface**:
+```typescript
+interface SyncRunStats {
+  campaignsTotal: number
+  campaignsSynced: number
+  campaignsFailed: number
+  widgetsSynced: number
+}
+```
+
+### Job Queue Integration - Phase 7
+
+**New job type**: `manual-sync`
+
+**Queuing function**: `queueManualSync(type, targetId, userId?)`
+- `type`: 'account' | 'campaign'
+- `targetId`: Account ID or Campaign ID
+- Returns: Job ID for status tracking
+
+**Exports from `/jobs/index.ts`**:
+- `queueManualSync` - Queue manual sync job
+- `getJobStatus` - Get job status from queue
+
+### Updated Services - Phase 7
+
+**CampaignSyncService**:
+- Now integrates `SyncMetricsService` for audit logging
+- Tracks sync state with state machine (idle/syncing/synced/error)
+- Captures widget performance snapshots
+- Reports detailed stats (campaigns/widgets synced/failed)
+- Returns `SyncResult` with `syncRunId` for tracking
+
+---
+
 ## Recent Changes (Phase 11 - Production Monitoring & Alerting)
 
 ### New Files - Phase 11

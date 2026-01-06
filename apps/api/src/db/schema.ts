@@ -72,6 +72,27 @@ export const sourceAccounts = pgTable('source_accounts', {
   uniqueUserSourceName: unique().on(table.userId, table.sourceId, table.name),
 }))
 
+// Sync Runs - Audit log for sync executions
+export const syncRuns = pgTable('sync_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sourceAccountId: uuid('source_account_id').references(() => sourceAccounts.id, { onDelete: 'cascade' }),
+  triggeredBy: text('triggered_by').notNull(), // 'scheduled' | 'manual'
+  status: text('status').notNull().default('running'), // 'running' | 'completed' | 'failed'
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  durationMs: integer('duration_ms'),
+  campaignsTotal: integer('campaigns_total').default(0),
+  campaignsSynced: integer('campaigns_synced').default(0),
+  campaignsFailed: integer('campaigns_failed').default(0),
+  widgetsSynced: integer('widgets_synced').default(0),
+  error: text('error'),
+  metadata: jsonb('metadata'),
+}, (table) => ({
+  sourceAccountIdx: index('idx_sync_runs_source_account').on(table.sourceAccountId),
+  startedAtIdx: index('idx_sync_runs_started_at').on(table.startedAt),
+  statusIdx: index('idx_sync_runs_status').on(table.status),
+}))
+
 // Campaign Syncs - Performance history snapshots
 export const campaignSyncs = pgTable('campaign_syncs', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -94,11 +115,46 @@ export const campaignSyncs = pgTable('campaign_syncs', {
   ctr: numeric('ctr').notNull().default('0'),
   cpa: numeric('cpa').notNull().default('0'),
 
+  // Sync state machine (Phase 7)
+  syncStatus: text('sync_status').default('idle'), // 'idle' | 'syncing' | 'synced' | 'error'
+  syncStartedAt: timestamp('sync_started_at', { withTimezone: true }),
+  syncError: text('sync_error'),
+  lastSyncRunId: uuid('last_sync_run_id').references(() => syncRuns.id, { onDelete: 'set null' }),
+
   syncedAt: timestamp('synced_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   accountDateIdx: index('idx_campaign_syncs_account_date').on(table.sourceAccountId, table.syncedAt),
   campaignIdx: index('idx_campaign_syncs_campaign').on(table.externalCampaignId, table.syncedAt),
+  syncStatusIdx: index('idx_campaign_syncs_sync_status').on(table.syncStatus),
   uniqueAccountCampaign: unique().on(table.sourceAccountId, table.externalCampaignId),
+}))
+
+// Widget Syncs - Historical widget performance snapshots
+export const widgetSyncs = pgTable('widget_syncs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  syncRunId: uuid('sync_run_id').references(() => syncRuns.id, { onDelete: 'cascade' }),
+  campaignSyncId: uuid('campaign_sync_id').references(() => campaignSyncs.id, { onDelete: 'cascade' }),
+  widgetId: text('widget_id').notNull(),
+  widgetName: text('widget_name'),
+  // Metrics snapshot
+  impressions: integer('impressions').default(0),
+  clicks: integer('clicks').default(0),
+  spend: numeric('spend', { precision: 12, scale: 4 }).default('0'),
+  conversions: integer('conversions').default(0),
+  revenue: numeric('revenue', { precision: 12, scale: 4 }).default('0'),
+  ctr: numeric('ctr', { precision: 8, scale: 6 }),
+  cpc: numeric('cpc', { precision: 10, scale: 4 }),
+  cpa: numeric('cpa', { precision: 10, scale: 4 }),
+  roas: numeric('roas', { precision: 10, scale: 4 }),
+  // Status
+  enabled: boolean('enabled').default(true),
+  bidModifier: numeric('bid_modifier', { precision: 5, scale: 2 }),
+  // Timestamps
+  syncedAt: timestamp('synced_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  campaignSyncIdx: index('idx_widget_syncs_campaign_sync').on(table.campaignSyncId),
+  syncRunIdx: index('idx_widget_syncs_sync_run').on(table.syncRunId),
+  syncedAtIdx: index('idx_widget_syncs_synced_at').on(table.syncedAt),
 }))
 
 // Widget Blacklist
@@ -245,9 +301,19 @@ export const alerts = pgTable('alerts', {
 export type SourceAccount = typeof sourceAccounts.$inferSelect
 export type NewSourceAccount = typeof sourceAccounts.$inferInsert
 export type CampaignSync = typeof campaignSyncs.$inferSelect
+export type NewCampaignSync = typeof campaignSyncs.$inferInsert
+export type SyncRun = typeof syncRuns.$inferSelect
+export type NewSyncRun = typeof syncRuns.$inferInsert
+export type WidgetSync = typeof widgetSyncs.$inferSelect
+export type NewWidgetSync = typeof widgetSyncs.$inferInsert
 export type WidgetBlacklistEntry = typeof widgetBlacklist.$inferSelect
 export type OptimizerCampaign = typeof optimizerCampaigns.$inferSelect
 export type OptimizerRule = typeof optimizerRules.$inferSelect
 export type OptimizerAction = typeof optimizerActions.$inferSelect
 export type WidgetReactivation = typeof widgetReactivationQueue.$inferSelect
 export type Alert = typeof alerts.$inferSelect
+
+// Sync state types (Phase 7)
+export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error'
+export type SyncTrigger = 'scheduled' | 'manual'
+export type SyncRunStatus = 'running' | 'completed' | 'failed'

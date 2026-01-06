@@ -26,6 +26,13 @@ interface JobResult {
   error?: string
 }
 
+// Manual sync job payload
+interface ManualSyncPayload {
+  type: 'account' | 'campaign'
+  targetId: string
+  userId?: string
+}
+
 /**
  * Initialize pg-boss and register job handlers
  */
@@ -38,6 +45,7 @@ export async function initJobQueue(): Promise<void> {
   await boss.createQueue('run-optimizer')
   await boss.createQueue('process-reactivations')
   await boss.createQueue('send-daily-reports')
+  await boss.createQueue('manual-sync')
 
   // Register sync-campaigns handler (pg-boss v10 receives array of jobs)
   await boss.work('sync-campaigns', { pollingIntervalSeconds: 30 }, async (jobs) => {
@@ -138,7 +146,31 @@ export async function initJobQueue(): Promise<void> {
     tz: 'UTC',
   })
 
-  logger.info('Job schedules registered: sync-campaigns (*/30 min), run-optimizer (hourly), process-reactivations (every 6h), send-daily-reports (8:00 UTC)')
+  // Register manual-sync handler for on-demand syncs (Phase 7)
+  await boss.work('manual-sync', { pollingIntervalSeconds: 5 }, async (jobs) => {
+    for (const job of jobs) {
+      const startTime = Date.now()
+      const { type, targetId, userId } = job.data as ManualSyncPayload
+      logger.info({ jobId: job.id, type, targetId, userId }, 'Starting manual sync job')
+
+      try {
+        if (type === 'account') {
+          await campaignSyncService.syncAccount(targetId, 'manual')
+        } else {
+          await campaignSyncService.syncSingleCampaign(targetId, 'manual')
+        }
+        const duration = Date.now() - startTime
+        logger.info({ jobId: job.id, type, targetId, duration }, 'Manual sync completed')
+      } catch (error) {
+        const duration = Date.now() - startTime
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+        logger.error({ jobId: job.id, type, targetId, error: errorMsg, duration }, 'Manual sync failed')
+        throw error
+      }
+    }
+  })
+
+  logger.info('Job schedules registered: sync-campaigns (*/30 min), run-optimizer (hourly), process-reactivations (every 6h), send-daily-reports (8:00 UTC), manual-sync (on-demand)')
 }
 
 /**
@@ -152,6 +184,25 @@ export async function triggerJob(jobName: 'sync-campaigns' | 'run-optimizer' | '
   })
   logger.info({ jobName, jobId }, 'Manual job triggered')
   return jobId ?? 'unknown'
+}
+
+/**
+ * Queue a manual sync for account or campaign (Phase 7)
+ * Higher priority than scheduled syncs for faster response
+ */
+export async function queueManualSync(
+  type: 'account' | 'campaign',
+  targetId: string,
+  userId?: string
+): Promise<string | null> {
+  const jobId = await boss.send('manual-sync', { type, targetId, userId } as ManualSyncPayload, {
+    priority: 10, // Higher priority than scheduled syncs
+    retryLimit: 3,
+    retryDelay: 10,
+    retryBackoff: true,
+  })
+  logger.info({ type, targetId, userId, jobId }, 'Manual sync queued')
+  return jobId
 }
 
 /**

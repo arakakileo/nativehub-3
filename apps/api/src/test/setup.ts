@@ -34,6 +34,22 @@ beforeAll(async () => {
       UNIQUE(user_id, source_id, name)
     );
 
+    CREATE TABLE IF NOT EXISTS sync_runs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      source_account_id UUID REFERENCES source_accounts(id) ON DELETE CASCADE,
+      triggered_by TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'running',
+      started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      completed_at TIMESTAMPTZ,
+      duration_ms INTEGER,
+      campaigns_total INTEGER DEFAULT 0,
+      campaigns_synced INTEGER DEFAULT 0,
+      campaigns_failed INTEGER DEFAULT 0,
+      widgets_synced INTEGER DEFAULT 0,
+      error TEXT,
+      metadata JSONB
+    );
+
     CREATE TABLE IF NOT EXISTS campaign_syncs (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       source_account_id UUID NOT NULL REFERENCES source_accounts(id) ON DELETE CASCADE,
@@ -49,8 +65,32 @@ beforeAll(async () => {
       conversions INTEGER NOT NULL DEFAULT 0,
       ctr NUMERIC NOT NULL DEFAULT 0,
       cpa NUMERIC NOT NULL DEFAULT 0,
+      sync_status TEXT DEFAULT 'idle',
+      sync_started_at TIMESTAMPTZ,
+      sync_error TEXT,
+      last_sync_run_id UUID REFERENCES sync_runs(id) ON DELETE SET NULL,
       synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE(source_account_id, external_campaign_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS widget_syncs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      sync_run_id UUID REFERENCES sync_runs(id) ON DELETE CASCADE,
+      campaign_sync_id UUID REFERENCES campaign_syncs(id) ON DELETE CASCADE,
+      widget_id TEXT NOT NULL,
+      widget_name TEXT,
+      impressions INTEGER DEFAULT 0,
+      clicks INTEGER DEFAULT 0,
+      spend NUMERIC(12, 4) DEFAULT 0,
+      conversions INTEGER DEFAULT 0,
+      revenue NUMERIC(12, 4) DEFAULT 0,
+      ctr NUMERIC(8, 6),
+      cpc NUMERIC(10, 4),
+      cpa NUMERIC(10, 4),
+      roas NUMERIC(10, 4),
+      enabled BOOLEAN DEFAULT true,
+      bid_modifier NUMERIC(5, 2),
+      synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS widget_blacklist (
@@ -145,7 +185,9 @@ beforeEach(async () => {
     DELETE FROM optimizer_rules;
     DELETE FROM optimizer_campaigns;
     DELETE FROM widget_blacklist;
+    DELETE FROM widget_syncs;
     DELETE FROM campaign_syncs;
+    DELETE FROM sync_runs;
     DELETE FROM source_accounts;
   `)
 })

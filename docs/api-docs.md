@@ -2,7 +2,7 @@
 
 **Base URL**: `http://localhost:3001/api/v1`
 **Version**: 3.0.0
-**Status**: Phase 07 - Job Queue Implementation Complete
+**Status**: Phase 07 - Campaign Sync Service Enhancement Complete
 
 ---
 
@@ -12,10 +12,11 @@
 2. [Supported Traffic Sources](#supported-traffic-sources)
 3. [Campaigns API](#campaigns-api)
 4. [Widgets API](#widgets-api)
-5. [Optimizer API](#optimizer-api)
-6. [Jobs API](#jobs-api)
-7. [Error Handling](#error-handling)
-8. [Rate Limiting](#rate-limiting)
+5. [Sync API](#sync-api)
+6. [Optimizer API](#optimizer-api)
+7. [Jobs API](#jobs-api)
+8. [Error Handling](#error-handling)
+9. [Rate Limiting](#rate-limiting)
 
 ---
 
@@ -478,6 +479,339 @@ curl -X DELETE "http://localhost:3001/api/v1/widgets/blacklist/c47ac10b-58cc-437
 - `200 OK` - Successfully deleted
 - `401 Unauthorized` - Invalid token
 - `404 Not Found` - Entry not found or not owned by user
+
+---
+
+## Sync API
+
+Manage campaign synchronization, audit logs, and widget history.
+
+### POST /sync/account/:accountId
+
+Trigger manual sync for entire source account.
+
+**Authentication**: Required
+**Parameters**:
+
+| Name | Type | Location | Required | Description |
+|------|------|----------|----------|-------------|
+| accountId | string | path | Yes | UUID of source account |
+
+**Example Request**:
+```bash
+curl -X POST "http://localhost:3001/api/v1/sync/account/550e8400-e29b-41d4-a716-446655440000" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json"
+```
+
+**Example Response** (200 OK):
+```json
+{
+  "success": true,
+  "jobId": "12345678-1234-1234-1234-123456789012",
+  "message": "Sync queued for account Q1 Campaigns"
+}
+```
+
+**Status Codes**:
+- `200 OK` - Sync queued successfully
+- `401 Unauthorized` - Invalid token
+- `404 Not Found` - Account not found or not owned by user
+
+---
+
+### POST /sync/campaign/:campaignId
+
+Trigger manual sync for single campaign.
+
+**Authentication**: Required
+**Parameters**:
+
+| Name | Type | Location | Required | Description |
+|------|------|----------|----------|-------------|
+| campaignId | string | path | Yes | UUID of campaign sync record |
+
+**Example Request**:
+```bash
+curl -X POST "http://localhost:3001/api/v1/sync/campaign/f47ac10b-58cc-4372-a567-0e02b2c3d479" \
+  -H "Authorization: Bearer <token>"
+```
+
+**Example Response** (200 OK):
+```json
+{
+  "success": true,
+  "jobId": "87654321-4321-4321-4321-210987654321",
+  "message": "Sync queued for campaign Q1 Mobile - January Promo"
+}
+```
+
+**Status Codes**:
+- `200 OK` - Sync queued successfully
+- `401 Unauthorized` - Invalid token
+- `404 Not Found` - Campaign not found or not owned by user
+
+---
+
+### GET /sync/runs
+
+List sync run history with pagination.
+
+**Authentication**: Required
+**Parameters**:
+
+| Name | Type | Location | Required | Description |
+|------|------|----------|----------|-------------|
+| accountId | string | query | No | Filter by source account UUID |
+| limit | number | query | No | Results per page (1-100, default 50) |
+| offset | number | query | No | Pagination offset (default 0) |
+
+**Example Request**:
+```bash
+curl -X GET "http://localhost:3001/api/v1/sync/runs?accountId=550e8400-e29b-41d4-a716-446655440000&limit=25&offset=0" \
+  -H "Authorization: Bearer <token>"
+```
+
+**Example Response** (200 OK):
+```json
+{
+  "runs": [
+    {
+      "id": "sync-run-123",
+      "sourceAccountId": "550e8400-e29b-41d4-a716-446655440000",
+      "triggeredBy": "scheduled",
+      "status": "completed",
+      "startedAt": "2026-01-06T10:00:00Z",
+      "completedAt": "2026-01-06T10:05:30Z",
+      "durationMs": 330000,
+      "campaignsTotal": 42,
+      "campaignsSynced": 42,
+      "campaignsFailed": 0,
+      "widgetsSynced": 215,
+      "error": null
+    },
+    {
+      "id": "sync-run-122",
+      "sourceAccountId": "550e8400-e29b-41d4-a716-446655440000",
+      "triggeredBy": "manual",
+      "status": "completed",
+      "startedAt": "2026-01-06T09:30:00Z",
+      "completedAt": "2026-01-06T09:35:00Z",
+      "durationMs": 300000,
+      "campaignsTotal": 42,
+      "campaignsSynced": 41,
+      "campaignsFailed": 1,
+      "widgetsSynced": 210,
+      "error": null
+    }
+  ]
+}
+```
+
+**Status Codes**:
+- `200 OK` - Success
+- `401 Unauthorized` - Invalid token
+- `404 Not Found` - Account not found (if accountId provided)
+
+---
+
+### GET /sync/runs/:runId
+
+Get detailed sync run information with associated campaigns.
+
+**Authentication**: Required
+**Parameters**:
+
+| Name | Type | Location | Required | Description |
+|------|------|----------|----------|-------------|
+| runId | string | path | Yes | Sync run ID |
+
+**Example Request**:
+```bash
+curl -X GET "http://localhost:3001/api/v1/sync/runs/sync-run-123" \
+  -H "Authorization: Bearer <token>"
+```
+
+**Example Response** (200 OK):
+```json
+{
+  "id": "sync-run-123",
+  "sourceAccountId": "550e8400-e29b-41d4-a716-446655440000",
+  "triggeredBy": "scheduled",
+  "status": "completed",
+  "startedAt": "2026-01-06T10:00:00Z",
+  "completedAt": "2026-01-06T10:05:30Z",
+  "durationMs": 330000,
+  "campaignsTotal": 42,
+  "campaignsSynced": 42,
+  "campaignsFailed": 0,
+  "widgetsSynced": 215,
+  "error": null,
+  "campaigns": [
+    {
+      "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "sourceAccountId": "550e8400-e29b-41d4-a716-446655440000",
+      "externalCampaignId": "rev-12345",
+      "campaignName": "Q1 Mobile - January Promo",
+      "status": "active",
+      "enabled": true,
+      "budget": "5000.00",
+      "bid": "0.25",
+      "spend": "3245.67",
+      "impressions": 125000,
+      "clicks": 2500,
+      "conversions": 125,
+      "ctr": "0.02",
+      "cpa": "25.97",
+      "syncStatus": "synced",
+      "syncStartedAt": "2026-01-06T10:00:15Z",
+      "syncError": null,
+      "syncedAt": "2026-01-06T10:05:00Z"
+    }
+  ]
+}
+```
+
+**Status Codes**:
+- `200 OK` - Success
+- `401 Unauthorized` - Invalid token
+- `404 Not Found` - Sync run not found or not owned by user
+
+---
+
+### GET /sync/widgets/:campaignId
+
+Get widget performance history for a campaign.
+
+**Authentication**: Required
+**Parameters**:
+
+| Name | Type | Location | Required | Description |
+|------|------|----------|----------|-------------|
+| campaignId | string | path | Yes | Campaign sync ID |
+| days | number | query | No | History retention (1-90, default 30) |
+
+**Example Request**:
+```bash
+curl -X GET "http://localhost:3001/api/v1/sync/widgets/f47ac10b-58cc-4372-a567-0e02b2c3d479?days=7" \
+  -H "Authorization: Bearer <token>"
+```
+
+**Example Response** (200 OK):
+```json
+{
+  "widgets": [
+    {
+      "id": "widget-snapshot-456",
+      "syncRunId": "sync-run-123",
+      "campaignSyncId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "widgetId": "widget-999",
+      "widgetName": "Premium Publishers Network",
+      "impressions": 5420,
+      "clicks": 127,
+      "spend": "32.50",
+      "conversions": 8,
+      "revenue": "125.40",
+      "ctr": "0.0234",
+      "cpc": "0.2560",
+      "cpa": "4.0625",
+      "roas": "3.8577",
+      "enabled": true,
+      "bidModifier": "1.15",
+      "syncedAt": "2026-01-06T10:05:00Z"
+    },
+    {
+      "id": "widget-snapshot-455",
+      "syncRunId": "sync-run-122",
+      "campaignSyncId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "widgetId": "widget-999",
+      "widgetName": "Premium Publishers Network",
+      "impressions": 5210,
+      "clicks": 119,
+      "spend": "31.20",
+      "conversions": 7,
+      "revenue": "115.60",
+      "ctr": "0.0228",
+      "cpc": "0.2622",
+      "cpa": "4.4571",
+      "roas": "3.7052",
+      "enabled": true,
+      "bidModifier": "1.10",
+      "syncedAt": "2026-01-06T09:35:00Z"
+    }
+  ]
+}
+```
+
+**Status Codes**:
+- `200 OK` - Success
+- `401 Unauthorized` - Invalid token
+- `404 Not Found` - Campaign not found or not owned by user
+
+---
+
+### GET /sync/job/:jobId
+
+Get status of manual sync job.
+
+**Authentication**: Required
+**Parameters**:
+
+| Name | Type | Location | Required | Description |
+|------|------|----------|----------|-------------|
+| jobId | string | path | Yes | Job ID from sync trigger endpoint |
+
+**Example Request**:
+```bash
+curl -X GET "http://localhost:3001/api/v1/sync/job/12345678-1234-1234-1234-123456789012" \
+  -H "Authorization: Bearer <token>"
+```
+
+**Example Response** (200 OK - Completed):
+```json
+{
+  "id": "12345678-1234-1234-1234-123456789012",
+  "name": "manual-sync",
+  "state": "completed",
+  "createdOn": "2026-01-06T10:00:00Z",
+  "startedOn": "2026-01-06T10:00:15Z",
+  "completedOn": "2026-01-06T10:05:30Z",
+  "output": {
+    "syncRunId": "sync-run-123",
+    "campaignsTotal": 42,
+    "campaignsSynced": 42,
+    "campaignsFailed": 0,
+    "widgetsSynced": 215,
+    "durationMs": 330000
+  },
+  "retryCount": 0
+}
+```
+
+**Example Response** (200 OK - In Progress):
+```json
+{
+  "id": "12345678-1234-1234-1234-123456789012",
+  "name": "manual-sync",
+  "state": "active",
+  "createdOn": "2026-01-06T10:00:00Z",
+  "startedOn": "2026-01-06T10:00:15Z",
+  "completedOn": null,
+  "output": null,
+  "retryCount": 0
+}
+```
+
+**Job States**:
+- `scheduled`: Waiting for processing
+- `active`: Currently syncing
+- `completed`: Successfully finished
+- `failed`: Failed after retries
+
+**Status Codes**:
+- `200 OK` - Success
+- `401 Unauthorized` - Invalid token
+- `404 Not Found` - Job not found
 
 ---
 

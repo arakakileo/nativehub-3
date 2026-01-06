@@ -1,4 +1,4 @@
-import { initJobQueue, stopJobQueue, triggerJob, getJobStatus, boss } from './job-queue.js'
+import { initJobQueue, stopJobQueue, triggerJob, getJobStatus, queueManualSync, boss } from './job-queue.js'
 import { logger } from '../lib/logger.js'
 
 /**
@@ -13,4 +13,4 @@ export async function initJobs(): Promise<void> {
   await initJobQueue()
 }
 
-export { stopJobQueue, triggerJob, getJobStatus, boss }
+export { stopJobQueue, triggerJob, getJobStatus, queueManualSync, boss }
