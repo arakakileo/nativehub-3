@@ -39,6 +39,12 @@ vi.mock('../services/optimizer/index.js', () => ({
   },
 }))
 
+vi.mock('../services/optimizer/reactivation.service.js', () => ({
+  reactivationService: {
+    processReactivations: vi.fn().mockResolvedValue({ processed: 0, reactivated: 0, failed: 0 }),
+  },
+}))
+
 vi.mock('../lib/logger.js', () => ({
   logger: {
     info: vi.fn(),
@@ -61,8 +67,8 @@ describe('Job Queue', () => {
     await initJobQueue()
 
     expect(boss.start).toHaveBeenCalled()
-    expect(boss.work).toHaveBeenCalledTimes(2)
-    expect(boss.schedule).toHaveBeenCalledTimes(2)
+    expect(boss.work).toHaveBeenCalledTimes(3) // sync-campaigns, run-optimizer, process-reactivations
+    expect(boss.schedule).toHaveBeenCalledTimes(3)
   })
 
   it('should schedule sync-campaigns every 30 minutes', async () => {

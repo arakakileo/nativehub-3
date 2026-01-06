@@ -18,6 +18,7 @@ import {
   MGID_TEMPLATES,
   REVCONTENT_TEMPLATES,
   UNIVERSAL_TEMPLATES,
+  HIGH_TICKET_TEMPLATES,
   ALL_SOURCE_TEMPLATES,
 } from './source-rule-templates.js'
 import type { RuleCondition, CompoundCondition } from '@nativehub/shared'
@@ -74,9 +75,20 @@ describe('Source Rule Templates', () => {
         TABOOLA_TEMPLATES.length +
         MGID_TEMPLATES.length +
         REVCONTENT_TEMPLATES.length +
-        UNIVERSAL_TEMPLATES.length
+        UNIVERSAL_TEMPLATES.length +
+        HIGH_TICKET_TEMPLATES.length
 
       expect(ALL_SOURCE_TEMPLATES.length).toBe(expectedCount)
+    })
+
+    it('should have high-ticket templates for aggressive optimization', () => {
+      expect(HIGH_TICKET_TEMPLATES.length).toBeGreaterThan(0)
+      HIGH_TICKET_TEMPLATES.forEach((t) => {
+        expect(t.id).toMatch(/^universal_/)
+        // High-ticket templates apply to all sources
+        expect(t.applicableSources).toContain('outbrain')
+        expect(t.applicableSources).toContain('taboola')
+      })
     })
   })
 

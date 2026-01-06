@@ -13,10 +13,12 @@ import type {
   PlacementMetrics,
   BlockResult,
   BidResult,
+  EnableResult,
   SourceConstraints,
   GetPlacementsParams,
   BlockPlacementParams,
   AdjustBidParams,
+  EnablePlacementParams,
 } from './interface.js'
 import { normalizeWidgetToPlacement } from './interface.js'
 import type { MgidSource } from '../../../traffic-sources/mgid/index.js'
@@ -85,6 +87,25 @@ export class MGIDOptimizerAdapter implements OptimizerAdapter {
       previousBid: params.previousBid || 0,
       newBid: params.newBid,
       error: 'MGID does not support widget-level bid adjustments. Bids can only be adjusted at teaser level.',
+    }
+  }
+
+  async enablePlacement(params: EnablePlacementParams): Promise<EnableResult> {
+    logger.info(
+      { campaignId: params.campaignId, placementId: params.placementId, bid: params.bid },
+      'MGID: Enabling/reactivating widget'
+    )
+
+    // TODO: Implement actual MGID API call to remove from blocklist
+    logger.warn(
+      { placementId: params.placementId },
+      'MGID: enablePlacement not yet implemented - requires removeFromBlocklist API'
+    )
+
+    return {
+      success: false,
+      placementId: params.placementId,
+      error: 'Enable placement not yet implemented for MGID',
     }
   }
 

@@ -97,6 +97,24 @@ export interface AdjustBidParams {
 }
 
 /**
+ * Parameters for enabling/reactivating a placement
+ */
+export interface EnablePlacementParams {
+  campaignId: string
+  placementId: string
+  bid?: number // Optional new bid on reactivation
+}
+
+/**
+ * Result from enable operation
+ */
+export interface EnableResult {
+  success: boolean
+  placementId: string
+  error?: string
+}
+
+/**
  * Optimizer Adapter Interface
  *
  * Each traffic source implements this to provide:
@@ -125,6 +143,13 @@ export interface OptimizerAdapter {
    * Some sources may not support this (returns error)
    */
   adjustPlacementBid(params: AdjustBidParams): Promise<BidResult>
+
+  /**
+   * Enable/reactivate a previously paused or blocked placement
+   * Used for widget reactivation after cooldown period
+   * Some sources may not support this (returns error)
+   */
+  enablePlacement(params: EnablePlacementParams): Promise<EnableResult>
 
   /**
    * Get source-specific constraints

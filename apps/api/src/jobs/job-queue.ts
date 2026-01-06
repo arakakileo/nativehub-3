@@ -1,6 +1,7 @@
 import PgBoss from 'pg-boss'
 import { campaignSyncService } from '../services/campaign-sync.js'
 import { optimizerService } from '../services/optimizer/index.js'
+import { reactivationService } from '../services/optimizer/reactivation.service.js'
 import { logger } from '../lib/logger.js'
 
 // pg-boss configuration with exponential backoff
@@ -34,6 +35,7 @@ export async function initJobQueue(): Promise<void> {
   // Create queues explicitly before registering workers and schedules
   await boss.createQueue('sync-campaigns')
   await boss.createQueue('run-optimizer')
+  await boss.createQueue('process-reactivations')
 
   // Register sync-campaigns handler (pg-boss v10 receives array of jobs)
   await boss.work('sync-campaigns', { pollingIntervalSeconds: 30 }, async (jobs) => {
@@ -73,6 +75,26 @@ export async function initJobQueue(): Promise<void> {
     }
   })
 
+  // Register process-reactivations handler
+  // Processes paused widgets that have passed their cooldown period
+  await boss.work('process-reactivations', { pollingIntervalSeconds: 60 }, async (jobs) => {
+    for (const job of jobs) {
+      const startTime = Date.now()
+      logger.info({ jobId: job.id }, 'Starting reactivation processing job')
+
+      try {
+        const result = await reactivationService.processReactivations()
+        const duration = Date.now() - startTime
+        logger.info({ jobId: job.id, result, duration }, 'Reactivation processing completed')
+      } catch (error) {
+        const duration = Date.now() - startTime
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+        logger.error({ jobId: job.id, error: errorMsg, duration }, 'Reactivation processing failed')
+        throw error
+      }
+    }
+  })
+
   // Schedule recurring jobs
   // Campaign sync every 30 minutes
   await boss.schedule('sync-campaigns', '*/30 * * * *', {}, {
@@ -84,13 +106,18 @@ export async function initJobQueue(): Promise<void> {
     tz: 'UTC',
   })
 
-  logger.info('Job schedules registered: sync-campaigns (*/30 min), run-optimizer (hourly)')
+  // Reactivation check every 6 hours (at 0, 6, 12, 18)
+  await boss.schedule('process-reactivations', '0 */6 * * *', {}, {
+    tz: 'UTC',
+  })
+
+  logger.info('Job schedules registered: sync-campaigns (*/30 min), run-optimizer (hourly), process-reactivations (every 6h)')
 }
 
 /**
  * Trigger a job manually
  */
-export async function triggerJob(jobName: 'sync-campaigns' | 'run-optimizer'): Promise<string> {
+export async function triggerJob(jobName: 'sync-campaigns' | 'run-optimizer' | 'process-reactivations'): Promise<string> {
   const jobId = await boss.send(jobName, {}, {
     retryLimit: 5,
     retryDelay: 30,

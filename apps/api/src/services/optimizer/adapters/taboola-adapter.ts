@@ -13,10 +13,12 @@ import type {
   PlacementMetrics,
   BlockResult,
   BidResult,
+  EnableResult,
   SourceConstraints,
   GetPlacementsParams,
   BlockPlacementParams,
   AdjustBidParams,
+  EnablePlacementParams,
 } from './interface.js'
 import { normalizeWidgetToPlacement } from './interface.js'
 import type { TaboolaSource } from '../../../traffic-sources/taboola/index.js'
@@ -102,6 +104,25 @@ export class TaboolaOptimizerAdapter implements OptimizerAdapter {
         newBid: params.newBid,
         error,
       }
+    }
+  }
+
+  async enablePlacement(params: EnablePlacementParams): Promise<EnableResult> {
+    logger.info(
+      { campaignId: params.campaignId, placementId: params.placementId, bid: params.bid },
+      'Taboola: Enabling/reactivating site'
+    )
+
+    // TODO: Implement actual Taboola API call to remove from blocklist
+    logger.warn(
+      { placementId: params.placementId },
+      'Taboola: enablePlacement not yet implemented - requires removeFromBlocklist API'
+    )
+
+    return {
+      success: false,
+      placementId: params.placementId,
+      error: 'Enable placement not yet implemented for Taboola',
     }
   }
 

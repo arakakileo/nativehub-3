@@ -289,12 +289,87 @@ export const UNIVERSAL_TEMPLATES: SourceRuleTemplate[] = [
 ]
 
 // =============================================================================
+// HIGH-TICKET TEMPLATES ($40-100 CPA offers)
+// More aggressive thresholds for high-value conversions
+// =============================================================================
+
+export const HIGH_TICKET_TEMPLATES: SourceRuleTemplate[] = [
+  {
+    id: 'universal_pause_no_conv_2_5x',
+    name: 'Pause: No Conversions at 2.5x CPA',
+    description: 'Pause widgets spending >= 2.5x target CPA with zero conversions',
+    applicableSources: ['outbrain', 'taboola', 'mgid', 'revcontent'],
+    category: 'pause',
+    condition: {
+      and: [
+        { metric: 'spend', operator: 'gte', value: 100 }, // Replaced: targetCpa * 2.5
+        { metric: 'conversions', operator: 'eq', value: 0 },
+      ],
+    },
+    action: { type: 'pause' },
+    priority: 0, // Highest - stop the bleeding
+    defaults: { cpaMultiplier: 2.5 },
+  },
+  {
+    id: 'universal_block_cpa_3x',
+    name: 'Block: CPA > 3x Target',
+    description: 'Block widgets with CPA exceeding 3x target (even with conversions)',
+    applicableSources: ['outbrain', 'taboola', 'mgid', 'revcontent'],
+    category: 'blacklist',
+    condition: {
+      and: [
+        { metric: 'spend', operator: 'gte', value: 50 },
+        { metric: 'conversions', operator: 'gte', value: 1 },
+        { metric: 'cpa', operator: 'gt', value: 150 }, // Replaced: targetCpa * 3
+      ],
+    },
+    action: { type: 'blacklist' },
+    priority: 1,
+    defaults: { cpaMultiplier: 3 },
+  },
+  {
+    id: 'universal_lower_bid_cpa_2x',
+    name: 'Lower Bid: CPA > 2x Target',
+    description: 'Decrease bid 20% for widgets with CPA exceeding 2x target',
+    applicableSources: ['outbrain', 'taboola', 'revcontent'], // MGID no widget bid support
+    category: 'bid',
+    condition: {
+      and: [
+        { metric: 'spend', operator: 'gte', value: 40 },
+        { metric: 'conversions', operator: 'gte', value: 1 },
+        { metric: 'cpa', operator: 'gt', value: 100 }, // Replaced: targetCpa * 2
+      ],
+    },
+    action: { type: 'bid_decrease', value: 20 },
+    priority: 2,
+    defaults: { cpaMultiplier: 2, bidAdjustment: 20 },
+  },
+  {
+    id: 'universal_raise_bid_good_performer',
+    name: 'Raise Bid: Strong Performer',
+    description: 'Increase bid 15% for widgets with CPA < 0.7x target and 3+ conversions',
+    applicableSources: ['outbrain', 'taboola', 'revcontent'],
+    category: 'bid',
+    condition: {
+      and: [
+        { metric: 'conversions', operator: 'gte', value: 3 },
+        { metric: 'cpa', operator: 'lt', value: 35 }, // Replaced: targetCpa * 0.7
+      ],
+    },
+    action: { type: 'bid_increase', value: 15 },
+    priority: 3,
+    defaults: { cpaMultiplier: 0.7, bidAdjustment: 15 },
+  },
+]
+
+// =============================================================================
 // EXPORTS
 // =============================================================================
 
 /** All source templates combined */
 export const ALL_SOURCE_TEMPLATES: SourceRuleTemplate[] = [
   ...UNIVERSAL_TEMPLATES,
+  ...HIGH_TICKET_TEMPLATES,
   ...OUTBRAIN_TEMPLATES,
   ...TABOOLA_TEMPLATES,
   ...MGID_TEMPLATES,

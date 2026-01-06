@@ -193,6 +193,31 @@ export const optimizerActions = pgTable('optimizer_actions', {
   campaignIdx: index('idx_optimizer_actions_campaign').on(table.optimizerCampaignId, table.createdAt),
 }))
 
+// Widget Reactivation Queue
+// Tracks paused widgets scheduled for reactivation after cooldown
+export const widgetReactivationQueue = pgTable('widget_reactivation_queue', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sourceAccountId: uuid('source_account_id').notNull().references(() => sourceAccounts.id, { onDelete: 'cascade' }),
+  externalCampaignId: text('external_campaign_id').notNull(),
+  widgetId: text('widget_id').notNull(),
+
+  originalBid: numeric('original_bid'),
+  reactivateBid: numeric('reactivate_bid'), // 50% of original
+
+  pausedAt: timestamp('paused_at', { withTimezone: true }).notNull(),
+  reactivateAfter: timestamp('reactivate_after', { withTimezone: true }).notNull(),
+  reactivatedAt: timestamp('reactivated_at', { withTimezone: true }),
+
+  status: text('status').notNull().default('pending'), // pending, reactivated, failed, cancelled
+  failReason: text('fail_reason'),
+
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  statusIdx: index('idx_reactivation_queue_status').on(table.status),
+  reactivateAfterIdx: index('idx_reactivation_queue_reactivate').on(table.reactivateAfter),
+  uniqueWidget: unique().on(table.sourceAccountId, table.externalCampaignId, table.widgetId),
+}))
+
 // Alerts
 export const alerts = pgTable('alerts', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -224,4 +249,5 @@ export type WidgetBlacklistEntry = typeof widgetBlacklist.$inferSelect
 export type OptimizerCampaign = typeof optimizerCampaigns.$inferSelect
 export type OptimizerRule = typeof optimizerRules.$inferSelect
 export type OptimizerAction = typeof optimizerActions.$inferSelect
+export type WidgetReactivation = typeof widgetReactivationQueue.$inferSelect
 export type Alert = typeof alerts.$inferSelect

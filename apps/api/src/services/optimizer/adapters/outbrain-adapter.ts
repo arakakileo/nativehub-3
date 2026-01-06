@@ -13,10 +13,12 @@ import type {
   PlacementMetrics,
   BlockResult,
   BidResult,
+  EnableResult,
   SourceConstraints,
   GetPlacementsParams,
   BlockPlacementParams,
   AdjustBidParams,
+  EnablePlacementParams,
 } from './interface.js'
 import { normalizeWidgetToPlacement } from './interface.js'
 import type { OutbrainSource } from '../../../traffic-sources/outbrain/index.js'
@@ -102,6 +104,26 @@ export class OutbrainOptimizerAdapter implements OptimizerAdapter {
         newBid: params.newBid,
         error,
       }
+    }
+  }
+
+  async enablePlacement(params: EnablePlacementParams): Promise<EnableResult> {
+    logger.info(
+      { campaignId: params.campaignId, placementId: params.placementId, bid: params.bid },
+      'Outbrain: Enabling/reactivating publisher'
+    )
+
+    // TODO: Implement actual Outbrain API call to remove from blocklist
+    // For now, log and return error since API method isn't implemented
+    logger.warn(
+      { placementId: params.placementId },
+      'Outbrain: enablePlacement not yet implemented - requires removeFromBlocklist API'
+    )
+
+    return {
+      success: false,
+      placementId: params.placementId,
+      error: 'Enable placement not yet implemented for Outbrain',
     }
   }
 

@@ -12,10 +12,12 @@ import type {
   PlacementMetrics,
   BlockResult,
   BidResult,
+  EnableResult,
   SourceConstraints,
   GetPlacementsParams,
   BlockPlacementParams,
   AdjustBidParams,
+  EnablePlacementParams,
 } from './interface.js'
 import { normalizeWidgetToPlacement } from './interface.js'
 import type { RevcontentSource } from '../../../traffic-sources/revcontent/index.js'
@@ -104,6 +106,25 @@ export class RevcontentOptimizerAdapter implements OptimizerAdapter {
         newBid: params.newBid,
         error,
       }
+    }
+  }
+
+  async enablePlacement(params: EnablePlacementParams): Promise<EnableResult> {
+    logger.info(
+      { campaignId: params.campaignId, placementId: params.placementId, bid: params.bid },
+      'Revcontent: Enabling/reactivating widget'
+    )
+
+    // TODO: Implement actual Revcontent API call to remove from blocklist
+    logger.warn(
+      { placementId: params.placementId },
+      'Revcontent: enablePlacement not yet implemented - requires removeFromBlocklist API'
+    )
+
+    return {
+      success: false,
+      placementId: params.placementId,
+      error: 'Enable placement not yet implemented for Revcontent',
     }
   }
 

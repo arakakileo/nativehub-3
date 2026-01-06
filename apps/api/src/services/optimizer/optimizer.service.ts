@@ -13,6 +13,41 @@ import { SourceAwareActionExecutor } from './source-aware-action-executor.js'
 import { getTemplatesForSource } from './source-rule-templates.js'
 
 /**
+ * Optimizer execution mode configuration
+ * Controls automation level and notification behavior
+ */
+export interface OptimizerMode {
+  /** Execute actions without confirmation (full auto mode) */
+  autoExecute: boolean
+  /** Send notification for each action taken */
+  alertOnAction: boolean
+  /** Send notification on failures/errors */
+  alertOnError: boolean
+}
+
+/** Default mode: full auto with alerts */
+export const DEFAULT_OPTIMIZER_MODE: OptimizerMode = {
+  autoExecute: true,
+  alertOnAction: true,
+  alertOnError: true,
+}
+
+/**
+ * High-ticket offer configuration thresholds
+ * For $40-100+ CPA offers
+ */
+export const HIGH_TICKET_CONFIG = {
+  /** Pause at spend >= 2.5x CPA goal with 0 conversions */
+  noConvPauseMultiplier: 2.5,
+  /** Block at CPA > 3x goal */
+  highCpaBlockMultiplier: 3,
+  /** Re-enable after 7 days */
+  reactivationCooldownDays: 7,
+  /** 50% bid reduction on reactivation */
+  reactivationBidReduction: 0.5,
+}
+
+/**
  * Optimizer Service - Manages optimization campaigns and rules
  */
 class OptimizerService {
@@ -203,14 +238,19 @@ class OptimizerService {
   /**
    * Run source-aware optimization for a single campaign
    * Uses new adapters, rule engine, and action executor
+   * @param optimizerCampaignId - Campaign ID to optimize
+   * @param mode - Execution mode (auto/manual, alerts on/off)
    */
-  async optimizeCampaignSourceAware(optimizerCampaignId: string): Promise<{
+  async optimizeCampaignSourceAware(
+    optimizerCampaignId: string,
+    mode: OptimizerMode = DEFAULT_OPTIMIZER_MODE
+  ): Promise<{
     actionsGenerated: number
     actionsExecuted: number
     actionsFailed: number
     skipped: number
   }> {
-    logger.info({ optimizerCampaignId }, 'Starting source-aware campaign optimization')
+    logger.info({ optimizerCampaignId, mode }, 'Starting source-aware campaign optimization')
 
     // Get optimizer campaign with source account
     const campaign = await db.query.optimizerCampaigns.findFirst({
@@ -293,7 +333,7 @@ class OptimizerService {
       return { actionsGenerated: 0, actionsExecuted: 0, actionsFailed: 0, skipped: 0 }
     }
 
-    // Execute actions using source-aware executor
+    // Execute actions using source-aware executor (if autoExecute enabled)
     const executor = new SourceAwareActionExecutor(
       adapter,
       optimizerCampaignId,
@@ -301,10 +341,21 @@ class OptimizerService {
       campaign.sourceAccountId
     )
 
-    const result = await executor.executeBatch(actions, {
-      stopOnFirstFailure: false,
-      maxRetries: 3,
-    })
+    let result: { summary: { success: number; failed: number; skipped: number } }
+
+    if (mode.autoExecute) {
+      result = await executor.executeBatch(actions, {
+        stopOnFirstFailure: false,
+        maxRetries: 3,
+      })
+    } else {
+      // Manual mode: log actions without executing
+      logger.info(
+        { optimizerCampaignId, actionsCount: actions.length },
+        'Manual mode - actions generated but not executed'
+      )
+      result = { summary: { success: 0, failed: 0, skipped: actions.length } }
+    }
 
     logger.info(
       {
