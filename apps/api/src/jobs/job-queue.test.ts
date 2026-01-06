@@ -67,8 +67,8 @@ describe('Job Queue', () => {
     await initJobQueue()
 
     expect(boss.start).toHaveBeenCalled()
-    expect(boss.work).toHaveBeenCalledTimes(3) // sync-campaigns, run-optimizer, process-reactivations
-    expect(boss.schedule).toHaveBeenCalledTimes(3)
+    expect(boss.work).toHaveBeenCalledTimes(4) // sync-campaigns, run-optimizer, process-reactivations, send-daily-reports
+    expect(boss.schedule).toHaveBeenCalledTimes(4)
   })
 
   it('should schedule sync-campaigns every 30 minutes', async () => {

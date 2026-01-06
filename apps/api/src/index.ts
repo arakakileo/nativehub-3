@@ -15,6 +15,8 @@ import { campaignRoutes } from './routes/campaigns.js'
 import { widgetRoutes } from './routes/widgets.js'
 import { optimizerRoutes } from './routes/optimizer.js'
 import { jobRoutes } from './routes/jobs.js'
+import { alertsRouter } from './routes/alerts.js'
+import { reportsRouter } from './routes/reports.js'
 import { initJobs, stopJobQueue } from './jobs/index.js'
 import { db } from './lib/db.js'
 import { sql } from 'drizzle-orm'
@@ -143,6 +145,8 @@ const apiV1 = new Hono()
   .route('/widgets', widgetRoutes)
   .route('/optimizer', optimizerRoutes)
   .route('/jobs', jobRoutes)
+  .route('/alerts', alertsRouter)
+  .route('/reports', reportsRouter)
 
 app.route('/api/v1', apiV1)
 

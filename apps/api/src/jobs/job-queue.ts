@@ -2,6 +2,7 @@ import PgBoss from 'pg-boss'
 import { campaignSyncService } from '../services/campaign-sync.js'
 import { optimizerService } from '../services/optimizer/index.js'
 import { reactivationService } from '../services/optimizer/reactivation.service.js'
+import { dailyReportService } from '../services/report/index.js'
 import { logger } from '../lib/logger.js'
 
 // pg-boss configuration with exponential backoff
@@ -36,6 +37,7 @@ export async function initJobQueue(): Promise<void> {
   await boss.createQueue('sync-campaigns')
   await boss.createQueue('run-optimizer')
   await boss.createQueue('process-reactivations')
+  await boss.createQueue('send-daily-reports')
 
   // Register sync-campaigns handler (pg-boss v10 receives array of jobs)
   await boss.work('sync-campaigns', { pollingIntervalSeconds: 30 }, async (jobs) => {
@@ -111,13 +113,38 @@ export async function initJobQueue(): Promise<void> {
     tz: 'UTC',
   })
 
-  logger.info('Job schedules registered: sync-campaigns (*/30 min), run-optimizer (hourly), process-reactivations (every 6h)')
+  // Register send-daily-reports handler
+  // Sends daily summary reports to all users with notifications enabled
+  await boss.work('send-daily-reports', { pollingIntervalSeconds: 60 }, async (jobs) => {
+    for (const job of jobs) {
+      const startTime = Date.now()
+      logger.info({ jobId: job.id }, 'Starting daily report job')
+
+      try {
+        const result = await dailyReportService.generateAndSendReports()
+        const duration = Date.now() - startTime
+        logger.info({ jobId: job.id, result, duration }, 'Daily report job completed')
+      } catch (error) {
+        const duration = Date.now() - startTime
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+        logger.error({ jobId: job.id, error: errorMsg, duration }, 'Daily report job failed')
+        throw error
+      }
+    }
+  })
+
+  // Daily reports at 8:00 AM UTC (5:00 AM BRT)
+  await boss.schedule('send-daily-reports', '0 8 * * *', {}, {
+    tz: 'UTC',
+  })
+
+  logger.info('Job schedules registered: sync-campaigns (*/30 min), run-optimizer (hourly), process-reactivations (every 6h), send-daily-reports (8:00 UTC)')
 }
 
 /**
  * Trigger a job manually
  */
-export async function triggerJob(jobName: 'sync-campaigns' | 'run-optimizer' | 'process-reactivations'): Promise<string> {
+export async function triggerJob(jobName: 'sync-campaigns' | 'run-optimizer' | 'process-reactivations' | 'send-daily-reports'): Promise<string> {
   const jobId = await boss.send(jobName, {}, {
     retryLimit: 5,
     retryDelay: 30,
