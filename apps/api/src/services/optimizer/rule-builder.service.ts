@@ -345,9 +345,17 @@ export class RuleBuilderService {
   /**
    * Update rule
    */
-  updateRule(ruleId: string, updates: Partial<Pick<CustomRule,
-    'name' | 'description' | 'status' | 'priority' | 'conditions' | 'conditionLogic' | 'actions' | 'schedule' | 'limits'
-  >>): CustomRule {
+  updateRule(ruleId: string, updates: {
+    name?: string
+    description?: string
+    status?: RuleStatus
+    priority?: number
+    conditions?: Omit<RuleCondition, 'id'>[]
+    conditionLogic?: RuleLogic
+    actions?: Omit<RuleAction, 'id'>[]
+    schedule?: CustomRule['schedule']
+    limits?: Partial<CustomRule['limits']>
+  }): CustomRule {
     const rule = this.rules.get(ruleId)
     if (!rule) {
       throw new Error(`Rule ${ruleId} not found`)
@@ -373,15 +381,15 @@ export class RuleBuilderService {
     if (updates.conditions) {
       rule.conditions = updates.conditions.map((c, i) => ({
         ...c,
-        id: c.id ?? `cond_${i}`,
-      })) as RuleCondition[]
+        id: `cond_${i}`,
+      }))
     }
     if (updates.conditionLogic) rule.conditionLogic = updates.conditionLogic
     if (updates.actions) {
       rule.actions = updates.actions.map((a, i) => ({
         ...a,
-        id: a.id ?? `action_${i}`,
-      })) as RuleAction[]
+        id: `action_${i}`,
+      }))
     }
     if (updates.schedule) rule.schedule = { ...rule.schedule, ...updates.schedule }
     if (updates.limits) rule.limits = { ...rule.limits, ...updates.limits }

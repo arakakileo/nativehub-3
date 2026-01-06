@@ -17,6 +17,10 @@ import { optimizerRoutes } from './routes/optimizer.js'
 import { jobRoutes } from './routes/jobs.js'
 import { alertsRouter } from './routes/alerts.js'
 import { reportsRouter } from './routes/reports.js'
+import { optimizerRecommendationsRoutes } from './routes/optimizer-recommendations.js'
+import { optimizerAnomaliesRoutes } from './routes/optimizer-anomalies.js'
+import { optimizerExperimentsRoutes } from './routes/optimizer-experiments.js'
+import { optimizerCustomRulesRoutes } from './routes/optimizer-custom-rules.js'
 import { initJobs, stopJobQueue } from './jobs/index.js'
 import { db } from './lib/db.js'
 import { sql } from 'drizzle-orm'
@@ -144,6 +148,10 @@ const apiV1 = new Hono()
   .route('/campaigns', campaignRoutes)
   .route('/widgets', widgetRoutes)
   .route('/optimizer', optimizerRoutes)
+  .route('/optimizer/recommendations', optimizerRecommendationsRoutes)
+  .route('/optimizer/anomalies', optimizerAnomaliesRoutes)
+  .route('/optimizer/experiments', optimizerExperimentsRoutes)
+  .route('/optimizer/custom-rules', optimizerCustomRulesRoutes)
   .route('/jobs', jobRoutes)
   .route('/alerts', alertsRouter)
   .route('/reports', reportsRouter)
