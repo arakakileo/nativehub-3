@@ -1,5 +1,6 @@
 import { db } from '../../lib/db.js'
 import { optimizerCampaigns, optimizerRules, optimizerActions, sourceAccounts } from '../../db/schema.js'
+import { users } from '../../db/auth-schema.js'
 import { eq, and, desc } from 'drizzle-orm'
 import { getAuthenticatedSource } from '../../traffic-sources/index.js'
 import { RuleEngine, type WidgetData } from './rule-engine.js'
@@ -11,6 +12,8 @@ import { createOptimizerAdapter, hasOptimizerSupport } from './adapters/index.js
 import { SourceAwareRuleEngine, type RuleEngineContext } from './source-aware-rule-engine.js'
 import { SourceAwareActionExecutor } from './source-aware-action-executor.js'
 import { getTemplatesForSource } from './source-rule-templates.js'
+// Notification service (Phase 2)
+import { notificationService } from '../notification/index.js'
 
 /**
  * Optimizer execution mode configuration
@@ -369,6 +372,17 @@ class OptimizerService {
       'Source-aware campaign optimization complete'
     )
 
+    // Send notifications based on mode settings
+    await this.sendOptimizationNotifications({
+      mode,
+      userId: account.userId,
+      sourceAccountId: campaign.sourceAccountId,
+      optimizerCampaignId,
+      campaignName: campaign.externalCampaignId, // TODO: Get actual campaign name from sync
+      actions,
+      result: result.summary,
+    })
+
     // Update last run status
     await db
       .update(optimizerCampaigns)
@@ -441,6 +455,76 @@ class OptimizerService {
     }
 
     logger.info({ optimizerCampaignId, sourceId, rulesAdded: priority - 1 }, 'Added source-aware default rules')
+  }
+
+  /**
+   * Send notifications for optimization results based on mode settings
+   */
+  private async sendOptimizationNotifications(params: {
+    mode: OptimizerMode
+    userId: string
+    sourceAccountId: string
+    optimizerCampaignId: string
+    campaignName: string
+    actions: Array<{ actionType: string; placementName: string; reason: string }>
+    result: { success: number; failed: number; skipped: number }
+  }): Promise<void> {
+    const { mode, userId, sourceAccountId, optimizerCampaignId, campaignName, actions, result } = params
+
+    try {
+      // Get user's notification preferences
+      const user = await db.query.users.findFirst({
+        where: eq(users.id, userId),
+      })
+
+      if (!user?.phone || !user.notificationsEnabled) {
+        logger.debug({ userId }, 'User has no phone or notifications disabled')
+        return
+      }
+
+      // Send action notifications (limit to 5 most important)
+      if (mode.alertOnAction && result.success > 0) {
+        // Get executed actions (first 5)
+        const executedActions = actions.slice(0, 5)
+
+        for (const action of executedActions) {
+          await notificationService.notifyActionExecuted({
+            userId,
+            phone: user.phone,
+            campaignName,
+            actionType: action.actionType,
+            targetName: action.placementName,
+            reason: action.reason,
+            sourceAccountId,
+            optimizerCampaignId,
+          })
+        }
+
+        // If more than 5 actions, send summary
+        if (actions.length > 5) {
+          logger.info(
+            { userId, total: actions.length, notified: 5 },
+            'Additional actions executed but not notified (limit reached)'
+          )
+        }
+      }
+
+      // Send error notification
+      if (mode.alertOnError && result.failed > 0) {
+        await notificationService.notifyOptimizerError({
+          userId,
+          phone: user.phone,
+          campaignName,
+          error: `${result.failed} of ${actions.length} actions failed to execute`,
+          sourceAccountId,
+          optimizerCampaignId,
+        })
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+      logger.error({ error: errorMsg }, 'Failed to send optimization notifications')
+      // Don't throw - notification failure shouldn't break optimizer
+    }
   }
 }
 
