@@ -28,4 +28,14 @@ export const rateLimitConfig = {
     windowMs: 60 * 1000, // 1 minute
     max: 100, // 100 requests per minute for API endpoints
   },
+  sync: {
+    windowMs: 60 * 1000, // 1 minute
+    max: 10, // 10 manual syncs per minute (prevents queue abuse)
+  },
+}
+
+// Cleanup job configuration
+export const cleanupConfig = {
+  widgetHistoryRetentionDays: 30, // Keep 30 days of widget snapshots
+  syncRunRetentionDays: 90, // Keep 90 days of sync audit logs
 }

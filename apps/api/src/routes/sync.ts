@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { validateQuery } from '../middleware/validate.js'
+import { syncRateLimiter } from '../middleware/rate-limit.js'
 import { db } from '../lib/db.js'
 import { sourceAccounts, campaignSyncs } from '../db/schema.js'
 import { eq, and } from 'drizzle-orm'
@@ -21,8 +22,8 @@ const WidgetHistorySchema = z.object({
 })
 
 export const syncRoutes = new Hono()
-  // POST /api/sync/account/:accountId - Trigger account sync
-  .post('/account/:accountId', async (c) => {
+  // POST /api/sync/account/:accountId - Trigger account sync (rate limited)
+  .post('/account/:accountId', syncRateLimiter, async (c) => {
     const accountId = c.req.param('accountId')
     const userId = c.get('userId') as string | undefined
 
@@ -49,8 +50,8 @@ export const syncRoutes = new Hono()
     })
   })
 
-  // POST /api/sync/campaign/:campaignId - Trigger campaign sync
-  .post('/campaign/:campaignId', async (c) => {
+  // POST /api/sync/campaign/:campaignId - Trigger campaign sync (rate limited)
+  .post('/campaign/:campaignId', syncRateLimiter, async (c) => {
     const campaignId = c.req.param('campaignId')
     const userId = c.get('userId') as string | undefined
 

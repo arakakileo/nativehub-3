@@ -4,6 +4,7 @@ import { optimizerService } from '../services/optimizer/index.js'
 import { reactivationService } from '../services/optimizer/reactivation.service.js'
 import { dailyReportService } from '../services/report/index.js'
 import { logger } from '../lib/logger.js'
+import { cleanupConfig } from '../lib/config.js'
 
 // pg-boss configuration with exponential backoff
 // Base delay 30s, retryLimit 5: delays = 30, 60, 120, 240, 480 (max ~8 min)
@@ -46,6 +47,7 @@ export async function initJobQueue(): Promise<void> {
   await boss.createQueue('process-reactivations')
   await boss.createQueue('send-daily-reports')
   await boss.createQueue('manual-sync')
+  await boss.createQueue('cleanup-old-data')
 
   // Register sync-campaigns handler (pg-boss v10 receives array of jobs)
   await boss.work('sync-campaigns', { pollingIntervalSeconds: 30 }, async (jobs) => {
@@ -146,6 +148,37 @@ export async function initJobQueue(): Promise<void> {
     tz: 'UTC',
   })
 
+  // Register cleanup-old-data handler for retention policies
+  await boss.work('cleanup-old-data', { pollingIntervalSeconds: 60 }, async (jobs) => {
+    for (const job of jobs) {
+      const startTime = Date.now()
+      logger.info({ jobId: job.id }, 'Starting cleanup job')
+
+      try {
+        const metricsService = campaignSyncService.getMetricsService()
+        const widgetsDeleted = await metricsService.cleanupOldWidgetHistory(cleanupConfig.widgetHistoryRetentionDays)
+        const syncRunsDeleted = await metricsService.cleanupOldSyncRuns(cleanupConfig.syncRunRetentionDays)
+        const duration = Date.now() - startTime
+        logger.info({
+          jobId: job.id,
+          widgetsDeleted,
+          syncRunsDeleted,
+          duration
+        }, 'Cleanup job completed')
+      } catch (error) {
+        const duration = Date.now() - startTime
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+        logger.error({ jobId: job.id, error: errorMsg, duration }, 'Cleanup job failed')
+        throw error
+      }
+    }
+  })
+
+  // Cleanup runs weekly on Sunday at 3:00 AM UTC
+  await boss.schedule('cleanup-old-data', '0 3 * * 0', {}, {
+    tz: 'UTC',
+  })
+
   // Register manual-sync handler for on-demand syncs (Phase 7)
   await boss.work('manual-sync', { pollingIntervalSeconds: 5 }, async (jobs) => {
     for (const job of jobs) {
@@ -170,13 +203,13 @@ export async function initJobQueue(): Promise<void> {
     }
   })
 
-  logger.info('Job schedules registered: sync-campaigns (*/30 min), run-optimizer (hourly), process-reactivations (every 6h), send-daily-reports (8:00 UTC), manual-sync (on-demand)')
+  logger.info('Job schedules registered: sync-campaigns (*/30 min), run-optimizer (hourly), process-reactivations (every 6h), send-daily-reports (8:00 UTC), cleanup-old-data (weekly Sun 3:00 UTC), manual-sync (on-demand)')
 }
 
 /**
  * Trigger a job manually
  */
-export async function triggerJob(jobName: 'sync-campaigns' | 'run-optimizer' | 'process-reactivations' | 'send-daily-reports'): Promise<string> {
+export async function triggerJob(jobName: 'sync-campaigns' | 'run-optimizer' | 'process-reactivations' | 'send-daily-reports' | 'cleanup-old-data'): Promise<string> {
   const jobId = await boss.send(jobName, {}, {
     retryLimit: 5,
     retryDelay: 30,

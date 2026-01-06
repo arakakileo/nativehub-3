@@ -30,6 +30,10 @@ vi.mock('pg-boss', () => {
 vi.mock('../services/campaign-sync.js', () => ({
   campaignSyncService: {
     syncAll: vi.fn().mockResolvedValue({ synced: 5, failed: 0 }),
+    getMetricsService: vi.fn().mockReturnValue({
+      cleanupOldWidgetHistory: vi.fn().mockResolvedValue(100),
+      cleanupOldSyncRuns: vi.fn().mockResolvedValue(50),
+    }),
   },
 }))
 
@@ -67,8 +71,8 @@ describe('Job Queue', () => {
     await initJobQueue()
 
     expect(boss.start).toHaveBeenCalled()
-    expect(boss.work).toHaveBeenCalledTimes(5) // sync-campaigns, run-optimizer, process-reactivations, send-daily-reports, manual-sync
-    expect(boss.schedule).toHaveBeenCalledTimes(4) // manual-sync has no schedule
+    expect(boss.work).toHaveBeenCalledTimes(6) // sync-campaigns, run-optimizer, process-reactivations, send-daily-reports, cleanup-old-data, manual-sync
+    expect(boss.schedule).toHaveBeenCalledTimes(5) // manual-sync has no schedule, cleanup-old-data runs weekly
   })
 
   it('should schedule sync-campaigns every 30 minutes', async () => {

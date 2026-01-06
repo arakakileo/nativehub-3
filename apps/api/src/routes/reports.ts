@@ -5,6 +5,10 @@
  * - GET /api/reports/daily - Get daily stats for the last N days
  * - GET /api/reports/summary - Get overall performance summary
  * - POST /api/reports/trigger - Manually trigger daily report generation
+ * - GET /api/reports/actions - Get optimizer actions history
+ * - GET /api/reports/export/campaigns - Export campaigns to CSV/JSON
+ * - GET /api/reports/export/actions - Export actions to CSV/JSON
+ * - GET /api/reports/trends - Get trend analysis (WoW, MoM comparisons)
  */
 
 import { Hono } from 'hono'
@@ -13,6 +17,21 @@ import { sourceAccounts, campaignSyncs, optimizerActions, optimizerCampaigns } f
 import { dailyReportService } from '../services/report/index.js'
 import { eq, and, desc, sql, gte, lt, inArray } from 'drizzle-orm'
 import { logger } from '../lib/logger.js'
+
+// Helper to convert data array to CSV string
+function toCSV(data: Record<string, unknown>[], columns?: string[]): string {
+  if (data.length === 0) return ''
+  const headers = columns || Object.keys(data[0])
+  const rows = data.map(row =>
+    headers.map(h => {
+      const val = row[h]
+      if (val === null || val === undefined) return ''
+      if (typeof val === 'object') return JSON.stringify(val).replace(/"/g, '""')
+      return String(val).includes(',') ? `"${String(val).replace(/"/g, '""')}"` : String(val)
+    }).join(',')
+  )
+  return [headers.join(','), ...rows].join('\n')
+}
 
 const reportsRouter = new Hono()
 
@@ -287,6 +306,278 @@ reportsRouter.get('/actions', async (c) => {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error'
     logger.error({ error: errorMsg }, 'Failed to list actions')
     return c.json({ error: 'Failed to list actions' }, 500)
+  }
+})
+
+/**
+ * GET /api/reports/export/campaigns - Export campaigns to CSV or JSON
+ * Query params:
+ * - format (csv or json, default: json)
+ * - from (ISO date)
+ * - to (ISO date)
+ */
+reportsRouter.get('/export/campaigns', async (c) => {
+  const user = c.get('user' as never) as Variables['user']
+  if (!user?.id) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+
+  const format = c.req.query('format') || 'json'
+  const from = c.req.query('from')
+  const to = c.req.query('to')
+
+  try {
+    // Get user's source accounts
+    const userAccounts = await db
+      .select({ id: sourceAccounts.id })
+      .from(sourceAccounts)
+      .where(eq(sourceAccounts.userId, user.id))
+
+    if (userAccounts.length === 0) {
+      return format === 'csv'
+        ? c.text('', 200, { 'Content-Type': 'text/csv' })
+        : c.json({ campaigns: [] })
+    }
+
+    const accountIds = userAccounts.map(a => a.id)
+
+    // Build where conditions
+    const conditions = [inArray(campaignSyncs.sourceAccountId, accountIds)]
+    if (from) conditions.push(gte(campaignSyncs.syncedAt, new Date(from)))
+    if (to) conditions.push(lt(campaignSyncs.syncedAt, new Date(to)))
+
+    // Get campaigns
+    const campaigns = await db
+      .select({
+        externalCampaignId: campaignSyncs.externalCampaignId,
+        campaignName: campaignSyncs.campaignName,
+        status: campaignSyncs.status,
+        enabled: campaignSyncs.enabled,
+        spend: campaignSyncs.spend,
+        impressions: campaignSyncs.impressions,
+        clicks: campaignSyncs.clicks,
+        conversions: campaignSyncs.conversions,
+        ctr: campaignSyncs.ctr,
+        cpa: campaignSyncs.cpa,
+        syncedAt: campaignSyncs.syncedAt,
+      })
+      .from(campaignSyncs)
+      .where(and(...conditions))
+      .orderBy(desc(campaignSyncs.syncedAt))
+
+    if (format === 'csv') {
+      const csv = toCSV(campaigns as unknown as Record<string, unknown>[])
+      return c.text(csv, 200, {
+        'Content-Type': 'text/csv',
+        'Content-Disposition': `attachment; filename="campaigns-export-${new Date().toISOString().split('T')[0]}.csv"`,
+      })
+    }
+
+    return c.json({ campaigns })
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+    logger.error({ error: errorMsg }, 'Failed to export campaigns')
+    return c.json({ error: 'Failed to export campaigns' }, 500)
+  }
+})
+
+/**
+ * GET /api/reports/export/actions - Export optimizer actions to CSV or JSON
+ * Query params:
+ * - format (csv or json, default: json)
+ * - from (ISO date)
+ * - to (ISO date)
+ * - actionType (filter by type)
+ */
+reportsRouter.get('/export/actions', async (c) => {
+  const user = c.get('user' as never) as Variables['user']
+  if (!user?.id) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+
+  const format = c.req.query('format') || 'json'
+  const from = c.req.query('from')
+  const to = c.req.query('to')
+  const actionType = c.req.query('actionType')
+
+  try {
+    // Get user's source accounts
+    const userAccounts = await db
+      .select({ id: sourceAccounts.id })
+      .from(sourceAccounts)
+      .where(eq(sourceAccounts.userId, user.id))
+
+    if (userAccounts.length === 0) {
+      return format === 'csv'
+        ? c.text('', 200, { 'Content-Type': 'text/csv' })
+        : c.json({ actions: [] })
+    }
+
+    const accountIds = userAccounts.map(a => a.id)
+
+    // Get optimizer campaigns for these accounts
+    const userCampaigns = await db
+      .select({ id: optimizerCampaigns.id })
+      .from(optimizerCampaigns)
+      .where(inArray(optimizerCampaigns.sourceAccountId, accountIds))
+
+    if (userCampaigns.length === 0) {
+      return format === 'csv'
+        ? c.text('', 200, { 'Content-Type': 'text/csv' })
+        : c.json({ actions: [] })
+    }
+
+    const campaignIds = userCampaigns.map(c => c.id)
+
+    // Build where conditions
+    const conditions: ReturnType<typeof and>[] = [inArray(optimizerActions.optimizerCampaignId, campaignIds)]
+    if (from) conditions.push(gte(optimizerActions.executedAt, new Date(from)))
+    if (to) conditions.push(lt(optimizerActions.executedAt, new Date(to)))
+    if (actionType) conditions.push(eq(optimizerActions.actionType, actionType))
+
+    // Get actions
+    const actions = await db
+      .select({
+        actionType: optimizerActions.actionType,
+        targetType: optimizerActions.targetType,
+        targetId: optimizerActions.targetId,
+        targetName: optimizerActions.targetName,
+        previousValue: optimizerActions.previousValue,
+        newValue: optimizerActions.newValue,
+        reason: optimizerActions.reason,
+        executed: optimizerActions.executed,
+        executedAt: optimizerActions.executedAt,
+        error: optimizerActions.error,
+      })
+      .from(optimizerActions)
+      .where(and(...conditions))
+      .orderBy(desc(optimizerActions.executedAt))
+
+    if (format === 'csv') {
+      const csv = toCSV(actions as unknown as Record<string, unknown>[])
+      return c.text(csv, 200, {
+        'Content-Type': 'text/csv',
+        'Content-Disposition': `attachment; filename="actions-export-${new Date().toISOString().split('T')[0]}.csv"`,
+      })
+    }
+
+    return c.json({ actions })
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+    logger.error({ error: errorMsg }, 'Failed to export actions')
+    return c.json({ error: 'Failed to export actions' }, 500)
+  }
+})
+
+/**
+ * GET /api/reports/trends - Get trend analysis with period comparisons
+ * Returns week-over-week and month-over-month metrics comparisons
+ */
+reportsRouter.get('/trends', async (c) => {
+  const user = c.get('user' as never) as Variables['user']
+  if (!user?.id) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+
+  try {
+    // Get user's source accounts
+    const userAccounts = await db
+      .select({ id: sourceAccounts.id })
+      .from(sourceAccounts)
+      .where(eq(sourceAccounts.userId, user.id))
+
+    if (userAccounts.length === 0) {
+      return c.json({
+        weekOverWeek: { current: null, previous: null, change: null },
+        monthOverMonth: { current: null, previous: null, change: null },
+      })
+    }
+
+    const accountIds = userAccounts.map(a => a.id)
+    const now = new Date()
+
+    // Define periods
+    const thisWeekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    const lastWeekStart = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000)
+    const thisMonthStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    const lastMonthStart = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000)
+
+    // Helper to get aggregated stats for a period
+    async function getPeriodStats(fromDate: Date, toDate: Date) {
+      const result = await db
+        .select({
+          totalSpend: sql<number>`COALESCE(SUM(${campaignSyncs.spend}), 0)`,
+          totalConversions: sql<number>`COALESCE(SUM(${campaignSyncs.conversions}), 0)`,
+          totalImpressions: sql<number>`COALESCE(SUM(${campaignSyncs.impressions}), 0)`,
+          totalClicks: sql<number>`COALESCE(SUM(${campaignSyncs.clicks}), 0)`,
+        })
+        .from(campaignSyncs)
+        .where(and(
+          inArray(campaignSyncs.sourceAccountId, accountIds),
+          gte(campaignSyncs.syncedAt, fromDate),
+          lt(campaignSyncs.syncedAt, toDate)
+        ))
+
+      const stats = result[0] || { totalSpend: 0, totalConversions: 0, totalImpressions: 0, totalClicks: 0 }
+      const spend = Number(stats.totalSpend) || 0
+      const conversions = Number(stats.totalConversions) || 0
+      const impressions = Number(stats.totalImpressions) || 0
+      const clicks = Number(stats.totalClicks) || 0
+
+      return {
+        spend,
+        conversions,
+        impressions,
+        clicks,
+        cpa: conversions > 0 ? spend / conversions : 0,
+        ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+      }
+    }
+
+    // Calculate change percentage
+    function calcChange(current: number, previous: number): number | null {
+      if (previous === 0) return current > 0 ? 100 : null
+      return ((current - previous) / previous) * 100
+    }
+
+    // Get stats for all periods
+    const [thisWeek, lastWeek, thisMonth, lastMonth] = await Promise.all([
+      getPeriodStats(thisWeekStart, now),
+      getPeriodStats(lastWeekStart, thisWeekStart),
+      getPeriodStats(thisMonthStart, now),
+      getPeriodStats(lastMonthStart, thisMonthStart),
+    ])
+
+    return c.json({
+      weekOverWeek: {
+        current: thisWeek,
+        previous: lastWeek,
+        change: {
+          spend: calcChange(thisWeek.spend, lastWeek.spend),
+          conversions: calcChange(thisWeek.conversions, lastWeek.conversions),
+          impressions: calcChange(thisWeek.impressions, lastWeek.impressions),
+          clicks: calcChange(thisWeek.clicks, lastWeek.clicks),
+          cpa: calcChange(thisWeek.cpa, lastWeek.cpa),
+          ctr: calcChange(thisWeek.ctr, lastWeek.ctr),
+        },
+      },
+      monthOverMonth: {
+        current: thisMonth,
+        previous: lastMonth,
+        change: {
+          spend: calcChange(thisMonth.spend, lastMonth.spend),
+          conversions: calcChange(thisMonth.conversions, lastMonth.conversions),
+          impressions: calcChange(thisMonth.impressions, lastMonth.impressions),
+          clicks: calcChange(thisMonth.clicks, lastMonth.clicks),
+          cpa: calcChange(thisMonth.cpa, lastMonth.cpa),
+          ctr: calcChange(thisMonth.ctr, lastMonth.ctr),
+        },
+      },
+    })
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+    logger.error({ error: errorMsg }, 'Failed to get trends')
+    return c.json({ error: 'Failed to get trends' }, 500)
   }
 })
 

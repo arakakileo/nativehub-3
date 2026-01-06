@@ -130,3 +130,38 @@ export const apiRateLimiter = createMiddleware(async (c, next) => {
 
   await next()
 })
+
+/**
+ * Rate limiting middleware for manual sync endpoints
+ * Stricter limits to prevent job queue abuse
+ */
+export const syncRateLimiter = createMiddleware(async (c, next) => {
+  const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    c.req.header("x-real-ip") ||
+    "unknown"
+
+  const key = getRateLimitKey(ip, "sync")
+  const { allowed, remaining, resetTime } = checkRateLimit(
+    key,
+    rateLimitConfig.sync.windowMs,
+    rateLimitConfig.sync.max
+  )
+
+  // Set rate limit headers
+  c.header("X-RateLimit-Limit", String(rateLimitConfig.sync.max))
+  c.header("X-RateLimit-Remaining", String(remaining))
+  c.header("X-RateLimit-Reset", String(Math.ceil(resetTime / 1000)))
+
+  if (!allowed) {
+    return c.json(
+      {
+        error: "Too many sync requests",
+        message: "Manual sync rate limit exceeded. Please wait before triggering more syncs.",
+        retryAfter: Math.ceil((resetTime - Date.now()) / 1000),
+      },
+      429
+    )
+  }
+
+  await next()
+})
