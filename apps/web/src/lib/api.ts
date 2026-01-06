@@ -273,6 +273,53 @@ class ApiClient {
 
   getRuleTemplates = (): Promise<{ templates: RuleTemplate[] }> =>
     this.request('/api/v1/optimizer/custom-rules/templates')
+
+  // === Reports & Analytics ===
+
+  // Get daily stats for the last N days
+  getReportDaily = (days: number = 7): Promise<{ days: DailyStats[] }> =>
+    this.request(`/api/reports/daily?days=${days}`)
+
+  // Get summary stats for a period
+  getReportSummary = (from?: string, to?: string): Promise<ReportSummary> => {
+    const params = new URLSearchParams()
+    if (from) params.set('from', from)
+    if (to) params.set('to', to)
+    const query = params.toString() ? `?${params.toString()}` : ''
+    return this.request(`/api/reports/summary${query}`)
+  }
+
+  // Get trend analysis (WoW, MoM)
+  getReportTrends = (): Promise<TrendAnalysis> =>
+    this.request('/api/reports/trends')
+
+  // Export campaigns
+  exportCampaigns = (format: 'csv' | 'json' = 'json', from?: string, to?: string): Promise<Blob | { campaigns: Campaign[] }> => {
+    const params = new URLSearchParams()
+    params.set('format', format)
+    if (from) params.set('from', from)
+    if (to) params.set('to', to)
+    if (format === 'csv') {
+      return fetch(`${API_BASE}/api/reports/export/campaigns?${params.toString()}`, {
+        credentials: 'include',
+      }).then(r => r.blob()) as Promise<Blob>
+    }
+    return this.request(`/api/reports/export/campaigns?${params.toString()}`)
+  }
+
+  // Export actions
+  exportActions = (format: 'csv' | 'json' = 'json', from?: string, to?: string): Promise<Blob | { actions: OptimizerAction[] }> => {
+    const params = new URLSearchParams()
+    params.set('format', format)
+    if (from) params.set('from', from)
+    if (to) params.set('to', to)
+    if (format === 'csv') {
+      return fetch(`${API_BASE}/api/reports/export/actions?${params.toString()}`, {
+        credentials: 'include',
+      }).then(r => r.blob()) as Promise<Blob>
+    }
+    return this.request(`/api/reports/export/actions?${params.toString()}`)
+  }
 }
 
 export const api = new ApiClient()
@@ -704,4 +751,58 @@ export interface RuleTemplate {
   description: string
   conditions: Omit<RuleCondition, 'id'>[]
   actions: Omit<RuleAction, 'id'>[]
+}
+
+// === Reports & Analytics Types ===
+
+export interface DailyStats {
+  date: string
+  totalSpend: number
+  totalConversions: number
+  actionsExecuted: number
+  campaignsSynced: number
+}
+
+export interface ReportSummary {
+  period: {
+    from: string
+    to: string
+  }
+  totalSpend: number
+  totalConversions: number
+  averageCpa: number
+  totalActions: number
+  totalCampaigns: number
+  actionsByType: Record<string, number>
+}
+
+export interface PeriodStats {
+  spend: number
+  conversions: number
+  impressions: number
+  clicks: number
+  cpa: number
+  ctr: number
+}
+
+export interface PeriodChange {
+  spend: number | null
+  conversions: number | null
+  impressions: number | null
+  clicks: number | null
+  cpa: number | null
+  ctr: number | null
+}
+
+export interface TrendAnalysis {
+  weekOverWeek: {
+    current: PeriodStats | null
+    previous: PeriodStats | null
+    change: PeriodChange | null
+  }
+  monthOverMonth: {
+    current: PeriodStats | null
+    previous: PeriodStats | null
+    change: PeriodChange | null
+  }
 }

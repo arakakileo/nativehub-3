@@ -9,6 +9,7 @@ interface MetricCardProps {
   format?: 'currency' | 'number' | 'percent'
   icon: LucideIcon
   iconColor?: string
+  footer?: React.ReactNode
 }
 
 export function MetricCard({
@@ -18,6 +19,7 @@ export function MetricCard({
   format = 'number',
   icon: Icon,
   iconColor = 'text-primary',
+  footer,
 }: MetricCardProps) {
   const formatValue = (v: number) => {
     switch (format) {
@@ -60,6 +62,8 @@ export function MetricCard({
               <span className="text-muted-foreground">vs prev</span>
             </div>
           )}
+
+          {footer && <div className="mt-2">{footer}</div>}
         </div>
 
         <div className={cn('rounded-lg bg-primary/10 p-3', iconColor)}>

@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { DollarSign, MousePointer, Eye, TrendingUp, RefreshCw } from 'lucide-react'
+import { DollarSign, MousePointer, Eye, TrendingUp, TrendingDown, RefreshCw, Target, Percent, Zap } from 'lucide-react'
 import { MetricCard } from '../components/ui/MetricCard'
 import { DataTable } from '../components/ui/DataTable'
 import { StatusBadge } from '../components/ui/StatusBadge'
@@ -7,14 +7,33 @@ import { Button } from '../components/ui/Button'
 import { MetricGridSkeleton } from '../components/ui/Skeleton'
 import { useCampaigns } from '../hooks/useCampaigns'
 import { useSourceAccounts } from '../hooks/useSourceAccounts'
+import { useTrends } from '../hooks/useReports'
 import { formatCurrency, formatNumber, getSourceColor } from '../lib/utils'
 import type { Campaign, SourceAccount } from '../lib/api'
+
+// Trend indicator component
+function TrendIndicator({ value, inverse = false }: { value: number | null; inverse?: boolean }) {
+  if (value === null) return null
+
+  // For CPA, lower is better (inverse = true)
+  const isPositive = inverse ? value < 0 : value > 0
+  const Icon = isPositive ? TrendingUp : TrendingDown
+  const color = isPositive ? 'text-green-500' : 'text-red-500'
+
+  return (
+    <span className={`flex items-center gap-1 text-xs ${color}`}>
+      <Icon className="h-3 w-3" />
+      {Math.abs(value).toFixed(1)}%
+    </span>
+  )
+}
 
 export function Dashboard() {
   const { data: campaigns = [], isLoading: campaignsLoading, refetch } = useCampaigns()
   const { data: accounts = [], isLoading: accountsLoading } = useSourceAccounts()
+  const { data: trends, isLoading: trendsLoading } = useTrends()
 
-  // Calculate aggregate metrics
+  // Calculate aggregate metrics from campaigns
   const metrics = campaigns.reduce(
     (acc: { spend: number; clicks: number; impressions: number; conversions: number }, c: Campaign) => ({
       spend: acc.spend + (c.spend || 0),
@@ -25,7 +44,13 @@ export function Dashboard() {
     { spend: 0, clicks: 0, impressions: 0, conversions: 0 }
   )
 
+  // Calculate derived metrics
+  const cpa = metrics.conversions > 0 ? metrics.spend / metrics.conversions : 0
+  const ctr = metrics.impressions > 0 ? (metrics.clicks / metrics.impressions) * 100 : 0
   const roi = metrics.spend > 0 ? ((metrics.conversions * 50 - metrics.spend) / metrics.spend) * 100 : 0
+
+  // Get WoW trends
+  const wowChange = trends?.weekOverWeek?.change
 
   // Get source name from campaign
   const getSourceFromCampaign = (campaign: Campaign) => {
@@ -97,7 +122,7 @@ export function Dashboard() {
         </Button>
       </div>
 
-      {/* Metrics Grid */}
+      {/* Primary Metrics Grid */}
       {campaignsLoading ? (
         <MetricGridSkeleton />
       ) : (
@@ -108,6 +133,12 @@ export function Dashboard() {
             format="currency"
             icon={DollarSign}
             iconColor="text-green-600"
+            footer={!trendsLoading && wowChange && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>vs last week</span>
+                <TrendIndicator value={wowChange.spend} inverse />
+              </div>
+            )}
           />
           <MetricCard
             title="Total Clicks"
@@ -115,6 +146,12 @@ export function Dashboard() {
             format="number"
             icon={MousePointer}
             iconColor="text-blue-600"
+            footer={!trendsLoading && wowChange && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>vs last week</span>
+                <TrendIndicator value={wowChange.clicks} />
+              </div>
+            )}
           />
           <MetricCard
             title="Impressions"
@@ -122,6 +159,57 @@ export function Dashboard() {
             format="number"
             icon={Eye}
             iconColor="text-purple-600"
+            footer={!trendsLoading && wowChange && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>vs last week</span>
+                <TrendIndicator value={wowChange.impressions} />
+              </div>
+            )}
+          />
+          <MetricCard
+            title="Conversions"
+            value={metrics.conversions}
+            format="number"
+            icon={Zap}
+            iconColor="text-yellow-600"
+            footer={!trendsLoading && wowChange && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>vs last week</span>
+                <TrendIndicator value={wowChange.conversions} />
+              </div>
+            )}
+          />
+        </div>
+      )}
+
+      {/* Secondary Metrics Grid */}
+      {!campaignsLoading && (
+        <div className="grid gap-4 md:grid-cols-3">
+          <MetricCard
+            title="CPA (Cost per Action)"
+            value={cpa}
+            format="currency"
+            icon={Target}
+            iconColor="text-red-600"
+            footer={!trendsLoading && wowChange && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>vs last week</span>
+                <TrendIndicator value={wowChange.cpa} inverse />
+              </div>
+            )}
+          />
+          <MetricCard
+            title="CTR (Click-Through Rate)"
+            value={ctr}
+            format="percent"
+            icon={Percent}
+            iconColor="text-indigo-600"
+            footer={!trendsLoading && wowChange && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>vs last week</span>
+                <TrendIndicator value={wowChange.ctr} />
+              </div>
+            )}
           />
           <MetricCard
             title="ROI"
