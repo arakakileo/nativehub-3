@@ -26,12 +26,12 @@ export const RULE_TEMPLATES: Record<string, RuleTemplate> = {
     category: 'blacklist',
     condition: {
       and: [
-        { metric: 'spend', operator: 'gte', value: 100 },
+        { metric: 'spend', operator: 'gte', value: 200 },
         { metric: 'conversions', operator: 'eq', value: 0 },
       ],
     },
     action: { type: 'blacklist' },
-    defaults: { spendThreshold: 100 },
+    defaults: { spendThreshold: 200 },
   },
 
   // Blacklist widgets with CPA way above target

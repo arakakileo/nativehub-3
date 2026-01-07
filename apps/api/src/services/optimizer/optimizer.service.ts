@@ -477,8 +477,13 @@ class OptimizerService {
         where: eq(users.id, userId),
       })
 
-      if (!user?.phone || !user.notificationsEnabled) {
-        logger.debug({ userId }, 'User has no phone or notifications disabled')
+      // Use admin fallback number if user has no phone configured
+      const ADMIN_FALLBACK_PHONE = process.env.ADMIN_WHATSAPP_NUMBER || '556791983112'
+      const targetPhone = user?.phone || ADMIN_FALLBACK_PHONE
+      const notificationsEnabled = user?.notificationsEnabled !== false
+
+      if (!notificationsEnabled) {
+        logger.debug({ userId }, 'Notifications disabled for user')
         return
       }
 
@@ -490,7 +495,7 @@ class OptimizerService {
         for (const action of executedActions) {
           await notificationService.notifyActionExecuted({
             userId,
-            phone: user.phone,
+            phone: targetPhone,
             campaignName,
             actionType: action.actionType,
             targetName: action.placementName,
@@ -513,7 +518,7 @@ class OptimizerService {
       if (mode.alertOnError && result.failed > 0) {
         await notificationService.notifyOptimizerError({
           userId,
-          phone: user.phone,
+          phone: targetPhone,
           campaignName,
           error: `${result.failed} of ${actions.length} actions failed to execute`,
           sourceAccountId,

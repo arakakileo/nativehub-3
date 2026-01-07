@@ -40,7 +40,7 @@ export class EvolutionAPI {
     this.config = {
       baseUrl: config?.baseUrl || process.env.EVOLUTION_API_URL || 'https://evolution.arakakileo.com',
       apiKey: config?.apiKey || process.env.EVOLUTION_API_KEY || '',
-      instanceName: config?.instanceName || process.env.EVOLUTION_INSTANCE || 'nativehub-alerts',
+      instanceName: config?.instanceName || process.env.EVOLUTION_INSTANCE || 'nativehub',
     }
   }
 

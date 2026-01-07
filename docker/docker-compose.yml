@@ -4,6 +4,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.api
     image: nativehub3-api:latest
+    container_name: nativehub-prod-api
     environment:
       - NODE_ENV=production
       - DATABASE_URL=${DATABASE_URL}
@@ -42,6 +43,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.web
     image: nativehub3-web:latest
+    container_name: nativehub-prod-web
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/nginx-health"]
