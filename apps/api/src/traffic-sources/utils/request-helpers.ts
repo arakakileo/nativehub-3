@@ -11,6 +11,7 @@ export async function makeRequest<T>(
 
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
+    'Accept': 'application/json',
     ...options.headers,
   }
 
@@ -26,9 +27,17 @@ export async function makeRequest<T>(
   const body = await response.json().catch(() => null)
 
   if (!response.ok) {
-    // Log the full error details for debugging
-    console.error('API Error Response:', { status: response.status, url, body })
-    throw ApiError.fromResponse(response, body)
+    // Log full error details including API-specific request IDs for debugging
+    const requestId = response.headers.get('AMPLIFY-REQUEST-ID') ||
+                      response.headers.get('x-request-id') ||
+                      response.headers.get('request-id')
+    console.error('API Error Response:', {
+      status: response.status,
+      url,
+      body,
+      requestId,
+    })
+    throw ApiError.fromResponse(response, body, requestId || undefined)
   }
 
   return body as T

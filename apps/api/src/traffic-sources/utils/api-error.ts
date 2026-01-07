@@ -5,7 +5,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public statusCode: number,
-    public responseBody?: unknown
+    public responseBody?: unknown,
+    public requestId?: string
   ) {
     super(message)
     this.name = 'ApiError'
@@ -27,7 +28,16 @@ export class ApiError extends Error {
     return this.statusCode >= 500
   }
 
-  static fromResponse(response: Response, body?: unknown): ApiError {
+  /**
+   * Check if this is a generic server error that may need support investigation
+   */
+  isGenericServerError(): boolean {
+    if (this.statusCode !== 500) return false
+    const body = this.responseBody as { message?: string } | undefined
+    return body?.message?.includes('encountered an error') || false
+  }
+
+  static fromResponse(response: Response, body?: unknown, requestId?: string): ApiError {
     let message = `API Error: ${response.status} ${response.statusText}`
 
     if (body && typeof body === 'object' && 'message' in body) {
@@ -36,6 +46,11 @@ export class ApiError extends Error {
       message = String((body as { error: unknown }).error)
     }
 
-    return new ApiError(message, response.status, body)
+    // Include requestId in message for easier debugging
+    if (requestId) {
+      message = `${message} (RequestID: ${requestId})`
+    }
+
+    return new ApiError(message, response.status, body, requestId)
   }
 }

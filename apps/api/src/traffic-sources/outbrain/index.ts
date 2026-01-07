@@ -307,13 +307,54 @@ export class OutbrainSource extends BaseTrafficSource {
     return withRetry(async () => {
       await this.rateLimiter.acquire()
 
-      // Outbrain calls them "publishers" instead of widgets
-      // Outbrain API limits to 50 items per page
+      // Outbrain uses "sections" (not "publishers") for granular placement data
+      // Sections are sub-units of publishers (e.g., NYPost Sports, NYPost Business)
+      // API limits to 50 items per page
       const limit = Math.min(options.perPage || 50, 50)
-      const response = await makeRequest<{ publishers: OutbrainPublisher[] }>(
-        buildUrl(config.baseUrl, `/marketers/${this.marketerId}/campaigns/${options.campaignId}/publishers`, {
-          offset: options.page ? (options.page - 1) * limit : 0,
-          limit,
+
+      // Try sections endpoint first (more granular and commonly used)
+      try {
+        const response = await makeRequest<{ sections: OutbrainSection[] }>(
+          buildUrl(config.baseUrl, `/marketers/${this.marketerId}/campaigns/${options.campaignId}/sections`, {
+            offset: options.page ? (options.page - 1) * limit : 0,
+            limit,
+          }),
+          {
+            headers: {
+              'OB-TOKEN-V1': this.accessToken!,
+            },
+          }
+        )
+
+        logger.info({ sectionCount: response.sections?.length || 0, campaignId: options.campaignId }, 'Outbrain sections fetched')
+        return (response.sections || []).map((s) => this.normalizeSection(s, options.campaignId))
+      } catch (sectionError) {
+        // If sections fail, try fetching from PerPublisher report
+        logger.warn({ error: sectionError instanceof Error ? sectionError.message : sectionError },
+          'Sections endpoint failed, trying PerPublisher report')
+        return this.getWidgetsFromReport(options)
+      }
+    })
+  }
+
+  /**
+   * Fallback: Get widgets from PerPublisher performance report
+   * Used when /sections endpoint fails
+   */
+  private async getWidgetsFromReport(options: ListWidgetsOptions): Promise<NormalizedWidget[]> {
+    await this.rateLimiter.acquire()
+
+    // Default to last 7 days for widget metrics
+    const to = new Date().toISOString().split('T')[0]
+    const from = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+    try {
+      const response = await makeRequest<OutbrainPerPublisherResponse>(
+        buildUrl(config.baseUrl, `/reports/marketers/${this.marketerId}/campaigns/${options.campaignId}/periodic`, {
+          from,
+          to,
+          breakdown: 'publisher', // Get publisher-level breakdown
+          limit: 500,
         }),
         {
           headers: {
@@ -322,8 +363,28 @@ export class OutbrainSource extends BaseTrafficSource {
         }
       )
 
-      return response.publishers.map((p) => this.normalizeWidget(p, options.campaignId))
-    })
+      const widgets: NormalizedWidget[] = []
+      for (const result of response.results || []) {
+        if (result.metadata?.publisherId) {
+          widgets.push({
+            id: `outbrain-${result.metadata.publisherId}`,
+            externalId: result.metadata.publisherId,
+            campaignId: options.campaignId,
+            name: result.metadata.publisherName || result.metadata.publisherId,
+            domain: result.metadata.publisherName,
+            enabled: true, // Report doesn't include enabled status
+            metrics: extractMetrics(result.metrics || {}),
+          })
+        }
+      }
+
+      logger.info({ widgetCount: widgets.length, campaignId: options.campaignId }, 'Outbrain widgets from report')
+      return widgets
+    } catch (reportError) {
+      logger.error({ error: reportError instanceof Error ? reportError.message : reportError },
+        'PerPublisher report also failed')
+      return [] // Return empty array instead of throwing
+    }
   }
 
   async blacklistWidget(campaignId: string, widgetId: string): Promise<BlacklistResult> {
@@ -334,16 +395,36 @@ export class OutbrainSource extends BaseTrafficSource {
       await this.rateLimiter.acquire()
 
       try {
-        await makeRequest(
-          buildUrl(config.baseUrl, `/marketers/${this.marketerId}/campaigns/${campaignId}/publishers/${widgetId}`),
-          {
-            method: 'PUT',
-            headers: {
-              'OB-TOKEN-V1': this.accessToken!,
-            },
-            body: JSON.stringify({ enabled: false }),
-          }
-        )
+        // Outbrain uses sections endpoint for blocking widgets
+        // Try sections first, fall back to publishers if it fails
+        try {
+          await makeRequest(
+            buildUrl(config.baseUrl, `/marketers/${this.marketerId}/campaigns/${campaignId}/sections/${widgetId}`),
+            {
+              method: 'PUT',
+              headers: {
+                'OB-TOKEN-V1': this.accessToken!,
+              },
+              body: JSON.stringify({ enabled: false }),
+            }
+          )
+          logger.info({ widgetId, campaignId }, 'Outbrain section blocked via sections endpoint')
+        } catch (sectionError) {
+          // Try publishers endpoint as fallback
+          logger.warn({ error: sectionError instanceof Error ? sectionError.message : sectionError },
+            'Sections endpoint failed for blacklist, trying publishers')
+          await makeRequest(
+            buildUrl(config.baseUrl, `/marketers/${this.marketerId}/campaigns/${campaignId}/publishers/${widgetId}`),
+            {
+              method: 'PUT',
+              headers: {
+                'OB-TOKEN-V1': this.accessToken!,
+              },
+              body: JSON.stringify({ enabled: false }),
+            }
+          )
+          logger.info({ widgetId, campaignId }, 'Outbrain section blocked via publishers endpoint')
+        }
 
         return { success: true, widgetId }
       } catch (error) {
@@ -437,6 +518,22 @@ export class OutbrainSource extends BaseTrafficSource {
       domain: publisher.name,
       enabled: publisher.enabled,
       metrics: extractMetrics(publisher),
+    }
+  }
+
+  /**
+   * Normalize Outbrain section to NormalizedWidget
+   * Sections are sub-units of publishers (e.g., NYPost Sports)
+   */
+  private normalizeSection(section: OutbrainSection, campaignId: string): NormalizedWidget {
+    return {
+      id: `outbrain-${section.id}`,
+      externalId: section.id,
+      campaignId,
+      name: section.name || section.id,
+      domain: section.publisherName || section.name,
+      enabled: section.enabled,
+      metrics: extractMetrics(section),
     }
   }
 
@@ -555,4 +652,37 @@ interface OutbrainMetrics {
   ecpc?: number
   ctr?: number
   cpa?: number
+}
+
+// Section type - sections are sub-units of publishers
+interface OutbrainSection {
+  id: string
+  name?: string
+  publisherId?: string
+  publisherName?: string
+  enabled: boolean
+  spend?: number
+  impressions?: number
+  clicks?: number
+  conversions?: number
+  cpc?: number
+  bidModification?: number
+}
+
+// Response from /reports/marketers/{m}/campaigns/{c}/periodic with breakdown=publisher
+interface OutbrainPerPublisherResponse {
+  results?: OutbrainPerPublisherResult[]
+  totalResults?: number
+}
+
+interface OutbrainPerPublisherResult {
+  metadata?: {
+    publisherId?: string
+    publisherName?: string
+    sectionId?: string
+    sectionName?: string
+    fromDate?: string
+    toDate?: string
+  }
+  metrics?: OutbrainMetrics
 }

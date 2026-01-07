@@ -49,10 +49,21 @@ export async function withRetry<T>(
 }
 
 /**
- * Default retry condition - retry on rate limits and server errors
+ * Default retry condition - retry on rate limits and transient server errors
+ * Does NOT retry generic 500 errors that indicate permanent API issues
  */
 function defaultRetryCondition(error: Error): boolean {
   if (error instanceof ApiError) {
+    // Don't retry generic 500 errors - these usually indicate API structure issues
+    // that won't resolve with retries (deprecated endpoints, invalid params, etc)
+    if (error.isGenericServerError()) {
+      logger.warn(
+        { requestId: error.requestId, message: error.message },
+        'Not retrying generic 500 error - may need API investigation'
+      )
+      return false
+    }
+    // Retry rate limits (429) and other server errors (502, 503, 504)
     return error.isRateLimit() || error.isServerError()
   }
 
