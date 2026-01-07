@@ -116,8 +116,9 @@ export class CampaignSyncService {
       const campaignSyncId = await this.upsertCampaign(accountId, campaign, syncRunId)
 
       // Sync widget stats
+      // Use externalId for API calls (raw ID without source prefix)
       try {
-        const widgets = await source.getWidgets({ campaignId: campaign.id })
+        const widgets = await source.getWidgets({ campaignId: campaign.externalId })
         if (widgets && widgets.length > 0) {
           await this.metricsService.storeWidgetSnapshots(syncRunId, campaignSyncId, widgets.map(w => ({
             widgetId: w.id,
@@ -135,7 +136,7 @@ export class CampaignSyncService {
         }
       } catch (error) {
         // Widget sync errors don't fail the campaign sync
-        logger.warn(`Failed to sync widgets for campaign ${campaign.id}: ${error}`)
+        logger.warn(`Failed to sync widgets for campaign ${campaign.externalId}: ${error}`)
       }
     }
 
@@ -191,10 +192,10 @@ export class CampaignSyncService {
       // Update campaign data
       await this.upsertCampaign(campaignSync.sourceAccountId, campaign, syncRunId)
 
-      // Sync widgets
+      // Sync widgets - use externalId for API calls (raw ID without source prefix)
       let widgetCount = 0
       try {
-        const widgets = await source.getWidgets({ campaignId: campaign.id })
+        const widgets = await source.getWidgets({ campaignId: campaign.externalId })
         if (widgets && widgets.length > 0) {
           await this.metricsService.storeWidgetSnapshots(syncRunId, campaignSyncId, widgets.map(w => ({
             widgetId: w.id,
@@ -211,7 +212,7 @@ export class CampaignSyncService {
           widgetCount = widgets.length
         }
       } catch (error) {
-        logger.warn(`Failed to sync widgets for single campaign ${campaign.id}: ${error}`)
+        logger.warn(`Failed to sync widgets for single campaign ${campaign.externalId}: ${error}`)
       }
 
       // Update state to synced
