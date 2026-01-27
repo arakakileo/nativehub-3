@@ -1,0 +1,14 @@
+# Grafana dashboard provisioning for NativeHub 3.0
+apiVersion: 1
+
+providers:
+  - name: 'NativeHub'
+    orgId: 1
+    folder: 'NativeHub'
+    folderUid: 'nativehub'
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards

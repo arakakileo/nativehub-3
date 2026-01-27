@@ -1,0 +1,136 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import PgBoss from 'pg-boss'
+
+// Mock pg-boss
+vi.mock('pg-boss', () => {
+  const mockBoss = {
+    start: vi.fn().mockResolvedValue(undefined),
+    stop: vi.fn().mockResolvedValue(undefined),
+    work: vi.fn().mockResolvedValue('worker-id'),
+    schedule: vi.fn().mockResolvedValue(undefined),
+    send: vi.fn().mockResolvedValue('test-job-id'),
+    createQueue: vi.fn().mockResolvedValue(undefined),
+    getJobById: vi.fn().mockResolvedValue({
+      id: 'test-job-id',
+      name: 'sync-campaigns',
+      state: 'completed',
+      createdOn: new Date(),
+      startedOn: new Date(),
+      completedOn: new Date(),
+      output: { success: true },
+      retryCount: 0,
+    }),
+  }
+  return {
+    default: vi.fn(() => mockBoss),
+  }
+})
+
+// Mock services
+vi.mock('../services/campaign-sync.js', () => ({
+  campaignSyncService: {
+    syncAll: vi.fn().mockResolvedValue({ synced: 5, failed: 0 }),
+    getMetricsService: vi.fn().mockReturnValue({
+      cleanupOldWidgetHistory: vi.fn().mockResolvedValue(100),
+      cleanupOldSyncRuns: vi.fn().mockResolvedValue(50),
+    }),
+  },
+}))
+
+vi.mock('../services/optimizer/index.js', () => ({
+  optimizerService: {
+    optimizeAll: vi.fn().mockResolvedValue({ optimized: 3 }),
+  },
+}))
+
+vi.mock('../services/optimizer/reactivation.service.js', () => ({
+  reactivationService: {
+    processReactivations: vi.fn().mockResolvedValue({ processed: 0, reactivated: 0, failed: 0 }),
+  },
+}))
+
+vi.mock('../lib/logger.js', () => ({
+  logger: {
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+  },
+}))
+
+describe('Job Queue', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    vi.resetModules()
+  })
+
+  it('should initialize and register job handlers', async () => {
+    const { initJobQueue, boss } = await import('./job-queue.js')
+    await initJobQueue()
+
+    expect(boss.start).toHaveBeenCalled()
+    expect(boss.work).toHaveBeenCalledTimes(6) // sync-campaigns, run-optimizer, process-reactivations, send-daily-reports, cleanup-old-data, manual-sync
+    expect(boss.schedule).toHaveBeenCalledTimes(5) // manual-sync has no schedule, cleanup-old-data runs weekly
+  })
+
+  it('should schedule sync-campaigns every 30 minutes', async () => {
+    const { initJobQueue, boss } = await import('./job-queue.js')
+    await initJobQueue()
+
+    expect(boss.schedule).toHaveBeenCalledWith(
+      'sync-campaigns',
+      '*/30 * * * *',
+      {},
+      { tz: 'UTC' }
+    )
+  })
+
+  it('should schedule run-optimizer every hour', async () => {
+    const { initJobQueue, boss } = await import('./job-queue.js')
+    await initJobQueue()
+
+    expect(boss.schedule).toHaveBeenCalledWith(
+      'run-optimizer',
+      '0 * * * *',
+      {},
+      { tz: 'UTC' }
+    )
+  })
+
+  it('should trigger manual job', async () => {
+    const { triggerJob, boss } = await import('./job-queue.js')
+    const jobId = await triggerJob('sync-campaigns')
+
+    expect(boss.send).toHaveBeenCalledWith(
+      'sync-campaigns',
+      {},
+      expect.objectContaining({
+        retryLimit: 5,
+        retryDelay: 30,
+        retryBackoff: true,
+      })
+    )
+    expect(jobId).toBe('test-job-id')
+  })
+
+  it('should get job status by queue and id', async () => {
+    const { getJobStatus, boss } = await import('./job-queue.js')
+    const job = await getJobStatus('sync-campaigns', 'test-job-id')
+
+    expect(boss.getJobById).toHaveBeenCalledWith('sync-campaigns', 'test-job-id')
+    expect(job).toHaveProperty('id', 'test-job-id')
+    expect(job).toHaveProperty('state', 'completed')
+  })
+
+  it('should stop job queue gracefully', async () => {
+    const { stopJobQueue, boss } = await import('./job-queue.js')
+    await stopJobQueue()
+
+    expect(boss.stop).toHaveBeenCalledWith({
+      graceful: true,
+      timeout: 30000,
+    })
+  })
+})
